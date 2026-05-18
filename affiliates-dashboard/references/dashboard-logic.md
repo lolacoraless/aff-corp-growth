@@ -200,3 +200,27 @@ const PALETTE = {
   conversion: '#000000',  // negro (lÃ­nea conversiÃ³n landing)
 };
 ```
+
+---
+
+## Proyecciones — dos columnas paralelas
+
+El dashboard muestra ambas metodologías lado a lado para comparación:
+
+### Regla 3 simple
+```javascript
+proj = MTD / DAYS_ELAPSED * DAYS_IN_MONTH
+```
+No considera variaciones de ritmo intra-mes.
+
+### Pacing histórico (columna "Pacing")
+```javascript
+// Para cada mes cerrado M-N: pacing_ratio = métrica_al_día_D / cierre_total_M-N
+// avgPacing = promedio de los últimos N meses (M-1 de beh_mtd.prev + M-2..M-5 de beh_pacing)
+proj = MTD_actual / avgPacing
+```
+Captura si el ritmo al día D históricamente representa el 60%, 80%, etc. del cierre final.
+**Fuente:** nueva query eh_pacing en PS1 — obtiene active/new/rec/ret/chu al día D para M-2..M-5.
+
+### Target
+Igual para ambas: cierre mes anterior ±10% (GROWTH_TARGET = 0.10).
