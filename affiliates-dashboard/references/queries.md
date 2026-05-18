@@ -252,6 +252,26 @@ Para M-1 a M-6: visitas a landing acumuladas al día D por `origen`. Pacing rati
 
 ---
 
+## 14. data_freshness — Fecha real de datos de tablas NMV
+
+**Tablas:** `BT_SC_TOTAL_SITE_AFILIADOS` y `BT_SC_AFFILIATE_BASE`
+
+Consulta `MAX(DT)` de cada tabla para mostrar en el dashboard hasta qué fecha llegaron los datos en este refresh. Permite distinguir si se está viendo D-1 o D-2 sin depender del hora de ejecución.
+
+```sql
+SELECT 'total_site' AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DT)) AS max_dt
+FROM `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`
+WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+UNION ALL
+SELECT 'affiliate_base' AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(CAST(DT AS DATE))) AS max_dt
+FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
+WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+```
+
+Resultado: 2 filas (`tbl`, `max_dt`). El dashboard muestra `total_site.max_dt` bajo el header de NMV como "📅 Datos NMV/Segmentos hasta: DD/M".
+
+---
+
 ## Cómo se usa el pacing en el dashboard
 
 El pacing promedio de 6 meses reemplaza el ratio-pace de 1 mes en `projBothCompact`:
@@ -261,9 +281,23 @@ avg_pacing = mean(metric_at_day_D / metric_full_close)  [sobre 6 meses cerrados]
 proj_pacing = MTD_actual / avg_pacing
 ```
 
-Cada sección muestra dos columnas de proyección:
-- **Regla 3 simple**: `MTD / días_transcurridos × días_del_mes`
+Cada sección muestra una columna de proyección unificada "Proyección vs Plan (Lineal / Pacing Nm)":
+- **Lineal**: `MTD / días_transcurridos × días_del_mes`
 - **Pacing (Nm)**: `MTD / avg_pacing` donde N = meses con data disponible
+
+---
+
+## Segmentación NMV — KA / LT
+
+La query `nmv_monthly` usa el campo `SEGMENT` de `BT_SC_AFFILIATE_BASE` directamente:
+
+```sql
+CASE WHEN SEGMENT = 'Key Accounts' THEN 'ka'
+     WHEN SEGMENT = 'Long Tail'    THEN 'lt'
+END AS seg
+```
+
+**Regla:** Content y Corporate son subsegmentos de KA en la tabla → quedan dentro del bucket `ka`. El dashboard muestra el disclaimer "KA incluye Content y Corporate" en el filtro de segmento. No intentar separar Content/Corporate via `MAIN_DEFINITION`: ese CASE nunca se alcanzaba porque `SEGMENT = 'Key Accounts'` los capturaba primero.
 
 ---
 
@@ -273,3 +307,4 @@ Cada sección muestra dos columnas de proyección:
 - `VERTICAL` (AFFILIATE_BASE) vs `VERTIC` (TOTAL_SITE_AFILIADOS) — nombres distintos
 - `NMV_AFF` no es aditivo con `NMV_LC` — son métricas para propósitos distintos
 - Valores en moneda local — NO comparar NMV entre sites sin conversión a USD
+- Tablas NMV (`BT_SC_TOTAL_SITE_AFILIADOS`, `BT_SC_AFFILIATE_BASE`) actualizan ~14:30h; `BT_AFFI_SALES_ATTRIBUTION_DAILY` (behaviour) actualiza ~8:30h
