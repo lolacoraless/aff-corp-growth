@@ -214,6 +214,59 @@ Segmentos:
 
 ---
 
+---
+
+## 11. nmv_pacing — Pacing histórico NMV
+
+**Tabla:** `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`
+
+Para M-1 a M-6: NMV acumulado al día D del mes vs cierre total. Pacing ratio = `nmv_at_day / nmv_full`.
+
+**Ventana:** `${D.M6}` → `${D.CUR}`
+
+```sql
+SELECT SIT_SITE_ID AS site,
+  FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(DT, MONTH)) AS month_start,
+  SUM(CASE WHEN EXTRACT(DAY FROM DT) <= ${D.DAY_OF_MONTH} THEN NMV_AFF ELSE 0 END) AS nmv_at_day,
+  SUM(NMV_AFF) AS nmv_full
+FROM `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`
+WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND DT >= '${D.M6}' AND DT < '${D.CUR}'
+GROUP BY site, month_start ORDER BY site, month_start
+```
+
+---
+
+## 12. reg_pacing — Pacing histórico Registros
+
+**Tabla:** `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`
+
+Para M-1 a M-6: registros acumulados al día D por `origen_grouped`. Pacing ratio = `reg_at_day / reg_full`.
+
+---
+
+## 13. landing_pacing — Pacing histórico Visitas Landing
+
+**Tabla:** `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_REGISTRATION_JOURNEY`
+
+Para M-1 a M-6: visitas a landing acumuladas al día D por `origen`. Pacing ratio = `visitas_at_day / visitas_full`.
+
+---
+
+## Cómo se usa el pacing en el dashboard
+
+El pacing promedio de 6 meses reemplaza el ratio-pace de 1 mes en `projBothCompact`:
+
+```
+avg_pacing = mean(metric_at_day_D / metric_full_close)  [sobre 6 meses cerrados]
+proj_pacing = MTD_actual / avg_pacing
+```
+
+Cada sección muestra dos columnas de proyección:
+- **Regla 3 simple**: `MTD / días_transcurridos × días_del_mes`
+- **Pacing (Nm)**: `MTD / avg_pacing` donde N = meses con data disponible
+
+---
+
 ## Notas de desarrollo
 
 - `DT` en `BT_SC_AFFILIATE_BASE` es DATETIME → usar `CAST(DT AS DATE)` para filtrar
