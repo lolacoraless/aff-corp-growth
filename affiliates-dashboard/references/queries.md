@@ -14,7 +14,25 @@ Todas las queries están implementadas en `bq_refresh.ps1` y se ejecutan en para
 | `${D.PREV}` | Primer día del mes anterior |
 | `${D.PREV_DAY}` | Mismo día del mes anterior (MTD apples-to-apples) |
 | `${D.M2}` | Primer día de hace 2 meses |
+| `${D.M3}` | Primer día de hace 3 meses |
+| `${D.M4}` | Primer día de hace 4 meses |
+| `${D.M5}` | Primer día de hace 5 meses |
+| `${D.M6}` | Primer día de hace 6 meses |
+| `${D.M7}` | Primer día de hace 7 meses (ventana de contexto para beh_pacing) |
+| `${D.DAY_OF_MONTH}` | Día de ayer dentro del mes (cutoff para pacing histórico) |
 | `${D.W8}` | Inicio ventana 8 semanas (lunes hace 8 semanas) |
+
+---
+
+## 1b. beh_pacing — Pacing histórico para proyecciones
+
+**Tabla:** `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
+
+Para cada mes M-2 a M-6: cuántos afiliados (active/new/rec/ret/chu) había al día D del mes (siendo D = día de ayer dentro del mes). Combinado con M-1 de `beh_mtd.prev`, da 6 meses de pacing.
+
+**Pacing ratio** = métrica_al_día_D / cierre_total_del_mes. El promedio de 6 meses se usa para proyectar: `proj = MTD_actual / avg_pacing`.
+
+Ventana de datos: `${D.M7}` → `${D.CUR}` (necesita M-7 para clasificar correctamente new/rec/chu de M-6).
 
 ---
 
