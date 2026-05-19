@@ -252,23 +252,42 @@ Para M-1 a M-6: visitas a landing acumuladas al día D por `origen`. Pacing rati
 
 ---
 
-## 14. data_freshness — Fecha real de datos de tablas NMV
+## 14. data_freshness — Fecha real disponible por tabla fuente
 
-**Tablas:** `BT_SC_TOTAL_SITE_AFILIADOS` y `BT_SC_AFFILIATE_BASE`
+Consulta `MAX(DT/ds/ORD_CREATED_DT)` de cada tabla fuente del dashboard para determinar hasta qué día llegaron los datos en este refresh. Cada sección muestra el tag "Datos cerrados hasta el D de mes inclusive" usando la fecha de su tabla específica.
 
-Consulta `MAX(DT)` de cada tabla para mostrar en el dashboard hasta qué fecha llegaron los datos en este refresh. Permite distinguir si se está viendo D-1 o D-2 sin depender del hora de ejecución.
+| `tbl` | Tabla fuente | Sección |
+|-------|-------------|---------|
+| `total_site` | `BT_SC_TOTAL_SITE_AFILIADOS` | NMV / Share |
+| `affiliate_base` | `BT_SC_AFFILIATE_BASE` | NMV Segmentos |
+| `attr_daily` | `BT_AFFI_SALES_ATTRIBUTION_DAILY` | Behaviour MTD, Activación, Churn |
+| `registrations` | `AFFILIATE_REGISTRATION_CHANNEL` | Registros |
+| `landing` | `MKT_REGISTRATION_JOURNEY` | Tráfico Landing |
 
 ```sql
-SELECT 'total_site' AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DT)) AS max_dt
+SELECT 'total_site'    AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DT)) AS max_dt
 FROM `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`
 WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
 UNION ALL
 SELECT 'affiliate_base' AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(CAST(DT AS DATE))) AS max_dt
 FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
 WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+UNION ALL
+SELECT 'attr_daily'    AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DATE(ORD_CREATED_DT))) AS max_dt
+FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
+WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+  AND ORD_STATUS = 'paid' AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID
+UNION ALL
+SELECT 'registrations' AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DATE(ds))) AS max_dt
+FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`
+WHERE site_id IN ('MLB','MLM','MLC','MLA')
+UNION ALL
+SELECT 'landing'       AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DATE(ds))) AS max_dt
+FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_REGISTRATION_JOURNEY`
+WHERE page = 'landing'
 ```
 
-Resultado: 2 filas (`tbl`, `max_dt`). El dashboard muestra `total_site.max_dt` bajo el header de NMV como "📅 Datos NMV/Segmentos hasta: DD/M".
+Resultado: 5 filas. Dashboard muestra "Datos cerrados hasta el D de mes inclusive" en cada sección.
 
 ---
 
