@@ -3207,12 +3207,12 @@ function renderOverview() {
 
     // ── NMV Share ────────────────────────────────────────
     const shareC = d.nmv_segs?.all?.mtd?.share ?? null;
-    const shareP = d.nmv_segs?.all?.mtd_prev?.share ?? null;
+    const shareP = d.nmv_segs?.all?.mon?.share?.at(-2) ?? null;  // abril cerrado
     const shareDeltaVal = (shareC != null && shareP != null) ? shareC - shareP : null;
     const shareArrow = shareDeltaVal == null ? '' : shareDeltaVal >= 0 ? '↑' : '↓';
     const shareColor = shareDeltaVal == null ? '#6B7280' : shareDeltaVal >= 0 ? '#16a34a' : '#dc2626';
     const shareDeltaHTML = shareDeltaVal != null
-      ? `<span style="color:${shareColor};font-weight:600">${shareArrow} ${shareDeltaVal >= 0 ? '+' : ''}${shareDeltaVal.toFixed(2)} pp vs LM</span>`
+      ? `<span style="color:${shareColor};font-weight:600">${shareArrow} ${shareDeltaVal >= 0 ? '+' : ''}${shareDeltaVal.toFixed(2)} pp vs abr cierre</span>`
       : '';
 
     // ── Afiliados Activos ────────────────────────────────
@@ -3227,7 +3227,7 @@ function renderOverview() {
     const actBdg      = actDelta == null ? ''
       : actDelta >= GROWTH_TARGET * 100 ? '🟢' : actDelta >= 0 ? '🟡' : '🔴';
     const actDeltaHTML = actDelta != null
-      ? `<span style="color:${actDeltaColor};font-weight:600">${actArrow} ${actDelta >= 0 ? '+' : ''}${actDelta.toFixed(1)}% vs LM</span>`
+      ? `<span style="color:${actDeltaColor};font-weight:600">${actArrow} ${actDelta >= 0 ? '+' : ''}${actDelta.toFixed(1)}% vs abr (mismo período)</span>`
       : '';
 
     // ── QR Rolling ───────────────────────────────────────
