@@ -372,7 +372,7 @@ let MONTH_PCT  = +(DAYS_ELAPS / DAYS_MAY * 100).toFixed(1);
 const GROWTH_TARGET = 0.10;
 // Países con flags especiales para Daily Pulse
 const SITE_FLAGS = {
-  MLA: { excludeQR: true, qrNote: '⚠ base lanzamiento — Quick Ratio excluido' },
+  MLA: {},
 };
 
 // hdr-date removed
@@ -2659,7 +2659,7 @@ function onSegChange(site, select) {
 // ═══════════════════════════════════════════════════════
 
 const PULSE_SITES = ['MLB','MLM','MLC','MLA'];
-const SITE_FLAGS_DEF = { MLA: { excludeQR: true } };
+const SITE_FLAGS_DEF = { MLA: {} };
 const SITE_EMOJIS   = { MLB:'🇧🇷', MLM:'🇲🇽', MLC:'🇨🇱', MLA:'🇦🇷' };
 
 // Extract all pace-relevant values for one site
