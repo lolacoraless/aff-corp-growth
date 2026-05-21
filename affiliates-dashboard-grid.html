@@ -3231,9 +3231,16 @@ function renderOverview() {
       : '';
 
     // ── QR Rolling ───────────────────────────────────────
-    const qrRol  = d.beh?.qr_rolling?.qr ?? null;
-    const qrExcl = SITE_FLAGS_DEF[site]?.excludeQR;
-    const qrBdg  = qrExcl ? '' : (qrRol == null ? '' : qrRol >= 1.0 ? '🟢' : '🔴');
+    const qrRol   = d.beh?.qr_rolling?.qr ?? null;
+    const qrExcl  = SITE_FLAGS_DEF[site]?.excludeQR;
+    const closedQrArr = (d.beh?.mon?.qr?.slice(0, -1) ?? []).filter(v => v != null);
+    const qrAprClose  = closedQrArr.at(-1) ?? null;  // cierre abril
+    const qrDelta = (qrRol != null && qrAprClose != null) ? +(qrRol - qrAprClose).toFixed(2) : null;
+    const qrArrow = qrDelta == null ? '' : qrDelta >= 0 ? '↑' : '↓';
+    const qrDeltaColor = qrDelta == null ? '#6B7280' : qrDelta >= 0 ? '#16a34a' : '#dc2626';
+    const qrDeltaHTML  = qrDelta != null
+      ? `<span style="color:${qrDeltaColor};font-weight:600">${qrArrow} ${qrDelta >= 0 ? '+' : ''}${qrDelta} vs abr cierre</span>`
+      : '';
 
     // Helper: construye una card
     const card = (onclick, icon, metric, val, sub, targetLine) => `
@@ -3269,7 +3276,7 @@ function renderOverview() {
             '⚡', 'Quick Ratio Rolling 30d',
             qrExcl ? '—' : (qrRol != null ? qrRol.toFixed(2) : '—'),
             qrExcl ? '<span style="color:#F59E0B">⚠ base lanzamiento · excluido</span>'
-                   : (qrRol != null ? `${qrBdg} ${qrRol >= 1.0 ? 'Creciendo' : 'Achicándose'}` : ''),
+                   : qrDeltaHTML,
             ''
           )}
         </div>
