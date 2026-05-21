@@ -265,16 +265,16 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 
 
 <nav class="site-nav">
-  <div class="site-tab" data-site="OVERVIEW" onclick="switchSite('OVERVIEW',this)" style="color:#2563EB;font-weight:700">📊 Overview</div>
-  <div class="site-tab active" data-site="MLB" onclick="switchSite('MLB',this)">MLB</div>
+  <div class="site-tab active" data-site="OVERVIEW" onclick="switchSite('OVERVIEW',this)" style="color:#2563EB;font-weight:700">📊 Overview</div>
+  <div class="site-tab" data-site="MLB" onclick="switchSite('MLB',this)">MLB</div>
   <div class="site-tab" data-site="MLM" onclick="switchSite('MLM',this)">MLM</div>
   <div class="site-tab" data-site="MLC" onclick="switchSite('MLC',this)">MLC</div>
   <div class="site-tab" data-site="MLA" onclick="switchSite('MLA',this)">MLA</div>
   <div class="site-tab" data-site="PULSE" onclick="switchSite('PULSE',this)" style="margin-left:auto;color:var(--orange)">🎯 Daily Pulse</div>
 </nav>
 
-<div id="page-OVERVIEW" class="site-page"></div>
-<div id="page-MLB" class="site-page active"></div>
+<div id="page-OVERVIEW" class="site-page active"></div>
+<div id="page-MLB" class="site-page"></div>
 <div id="page-MLM" class="site-page"></div>
 <div id="page-MLC" class="site-page"></div>
 <div id="page-MLA" class="site-page"></div>
@@ -4851,7 +4851,7 @@ async function loadSnapshot() {
           : `Última actualización: ${snap.savedAtDisplay}`;
         document.getElementById('last-refresh').style.display = 'inline';
         console.log('[Init] Datos pre-embedidos cargados:', snap.savedAtDisplay);
-        renderSite('MLB');
+        renderOverview();
         document.getElementById('global-legend').innerHTML = buildLegend();
         return; // no seguir — no hay GAS ni BQ en Grid
       }
@@ -4864,7 +4864,7 @@ async function loadSnapshot() {
   if (!await loadSnapshot()) {
     addCurrentMonthPoints(); // mock: agregar mes corriente a los arrays
   }
-  renderSite('MLB');
+  renderOverview();
   document.getElementById('global-legend').innerHTML = buildLegend();
   autoLoadFromGAS();
 })();
