@@ -2367,15 +2367,19 @@ function computeFreshness() {
     lastUpdate = `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')} a las ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
   }
 
-  // Fecha real cerrada: si la hora actual >= umbral del update de la tabla → D-1, sino D-2
-  // attr_daily actualiza ~8:30h → umbral 9; NMV actualiza ~14:30h → umbral 15
-  const closedDate = (updateHour) => {
-    const now = new Date();
-    const offset = now.getHours() >= updateHour ? 1 : 2;
-    const d = new Date(now);
-    d.setDate(d.getDate() - offset);
+  // Fecha cerrada basada en la hora del último update (savedAt), no la hora actual.
+  // Regla: todas las secciones → D-1 respecto al savedAt.
+  //        NMV → D-2 si el update fue antes de las 14h (NMV aún no había actualizado),
+  //              D-1 si fue a las 14h o después (NMV ya disponible).
+  const saBase = sa ? new Date(sa) : new Date();
+  const saHour = saBase.getHours();
+  const dayOffset = (n) => {
+    const d = new Date(saBase);
+    d.setDate(d.getDate() - n);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   };
+  const dateD1  = dayOffset(1);                      // todas las secciones: D-1
+  const dateNmv = dayOffset(saHour >= 14 ? 1 : 2);  // NMV: D-1 si ≥14h, D-2 si <14h
 
   FRESHNESS = {
     nmv:          fmtM(maxStr(snap.nmv_monthly,  'mes')),
@@ -2386,13 +2390,15 @@ function computeFreshness() {
     mtd:          mtdDate,
     lastUpdate:   lastUpdate,
     nmvDelayWarn: nmvDelayWarn,
-    // Fechas calculadas client-side segun hora del ultimo update de cada tabla
-    dateBeh:  closedDate(9),  // attr_daily actualiza ~8:30h
-    dateNmv:  closedDate(15), // BT_SC_TOTAL_SITE_AFILIADOS actualiza ~14:30h
-    dateReg:  closedDate(15), // AFFILIATE_REGISTRATION_CHANNEL actualiza ~15:00h (Paulo Llaque, 2026-05-21)
-    dateTrf:  closedDate(9),  // MKT_REGISTRATION_JOURNEY actualiza ~8:30h
-    dateAct:  closedDate(9),  // attr_daily actualiza ~8:30h
-    dateChu:  closedDate(9),  // attr_daily actualiza ~8:30h
+    // Fechas calculadas según hora del savedAt (último update del bq_refresh)
+    // NMV: D-2 si update < 14h (tabla aún no actualizada), D-1 si ≥ 14h
+    // Resto: siempre D-1 respecto al savedAt
+    dateBeh:  dateD1,   // attr_daily
+    dateNmv:  dateNmv,  // BT_SC_TOTAL_SITE_AFILIADOS — umbral 14h
+    dateReg:  dateD1,   // AFFILIATE_REGISTRATION_CHANNEL
+    dateTrf:  dateD1,   // MKT_REGISTRATION_JOURNEY
+    dateAct:  dateD1,   // attr_daily
+    dateChu:  dateD1,   // attr_daily
   };
 }
 
