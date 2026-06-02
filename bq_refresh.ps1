@@ -21,7 +21,7 @@ $prevLast = [DateTime]::DaysInMonth($PREV_DT.Year, $PREV_DT.Month)
 $pdDay   = [Math]::Max(1, [Math]::Min($now.Day - 1, $prevLast))
 $PREV_DAY = (Get-Date -Year $PREV_DT.Year -Month $PREV_DT.Month -Day $pdDay).ToString("yyyy-MM-dd")
 $dow = [int]$now.DayOfWeek; $dtm = if($dow -eq 0){6}else{$dow-1}
-$W8  = $now.AddDays(-$dtm - 56).ToString("yyyy-MM-dd")
+$W8  = $now.AddDays(-$dtm - 84).ToString("yyyy-MM-dd")  # 12 semanas atras (7x12=84)
 # Registros: AFFILIATE_REGISTRATION_CHANNEL actualiza ~15:00h
 # Antes de las 15h el dia de ayer no esta en la tabla — usar D-2 para mantener periodos simetricos
 $REG_OFFSET   = if ($now.Hour -ge 15) { 1 } else { 2 }
