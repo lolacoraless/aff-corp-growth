@@ -870,6 +870,20 @@ function fmtK(v) {
   if (a >= 1e3) return (v/1e3).toFixed(1)+'K';
   return Math.round(v).toString();
 }
+// MoM en tooltip: compara valor actual vs mes anterior del mismo dataset
+// Usa valores absolutos para manejar barras negativas (ej. Inactivos)
+function momStr(ctx) {
+  if (!ctx || ctx.dataIndex === 0) return '';
+  const curr = Math.abs(ctx.parsed?.y ?? ctx.raw ?? 0);
+  const prevRaw = ctx.dataset.data[ctx.dataIndex - 1];
+  if (prevRaw == null) return '';
+  const prev = Math.abs(prevRaw);
+  if (prev === 0) return '';
+  const pct = ((curr - prev) / prev * 100).toFixed(1);
+  const sign = parseFloat(pct) >= 0 ? '+' : '';
+  return ` (${sign}${pct}% MoM)`;
+}
+}
 
 // Mensualizado: project MTD to full month
 function mens(mtd_val, daysInMonth=DAYS_MAY) {
@@ -1015,7 +1029,7 @@ function renderNmv(site, gran='monthly', seg='all') {
     plugins: {
       legend: { display: false },
       title: { display: true, text: titleTxt, font:{size:11,weight:'700'}, color:'#1F2937', padding:{bottom:4} },
-      tooltip: { callbacks: { label: ctx => ` ${ctx.raw != null ? tooltipFn(ctx.raw) : '—'}` } },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.raw != null ? tooltipFn(ctx.raw) : '—'}${momStr(ctx)}` } },
     },
     scales: {
       x: { grid:{display:false}, ticks:{font:{size:9}, maxRotation:45} },
@@ -1256,10 +1270,10 @@ function renderBeh(site, gran='monthly') {
             label: ctx => {
               if (ctx.raw == null) return null;
               if (ctx.dataset.label === 'Quick Ratio')
-                return ` Quick Ratio calendario: ${ctx.raw?.toFixed(2)}`;
+                return ` Quick Ratio calendario: ${ctx.raw?.toFixed(2)}${momStr(ctx)}`;
               if (ctx.dataset.label === 'Quick Ratio Rolling')
                 return ` Quick Ratio Rolling 30d: ${ctx.raw?.toFixed(2)}`;
-              return ` ${ctx.dataset.label}: ${fmtK(Math.abs(ctx.raw))}`;
+              return ` ${ctx.dataset.label}: ${fmtK(Math.abs(ctx.raw))}${momStr(ctx)}`;
             },
             footer: items => {
               const total = items
@@ -1591,8 +1605,8 @@ function renderTraffic(site, gran='monthly', srcFilter='all') {
       plugins:{
         legend:baseLegend(10),
         tooltip:{callbacks:{label:ctx=>{
-          if(ctx.dataset.label.startsWith('%')) return ` Conversión: ${ctx.raw}%`;
-          return ` ${ctx.dataset.label}: ${fmt(ctx.raw)}`;
+          if(ctx.dataset.label.startsWith('%')) return ` Conversión: ${ctx.raw}%${momStr(ctx)}`;
+          return ` ${ctx.dataset.label}: ${fmt(ctx.raw)}${momStr(ctx)}`;
         }}},
       },
       scales:{
@@ -1915,8 +1929,8 @@ function renderReg(site, gran='monthly') {
             label: ctx => {
               if (ctx.raw == null) return null;
               if (ctx.dataset.label === 'Spend POM (LC)')
-                return ` Spend POM: ${fmtK(ctx.raw)} LC`;
-              return ` ${ctx.dataset.label}: ${fmt(ctx.raw)}`;
+                return ` Spend POM: ${fmtK(ctx.raw)} LC${momStr(ctx)}`;
+              return ` ${ctx.dataset.label}: ${fmt(ctx.raw)}${momStr(ctx)}`;
             },
             footer: items => {
               const total = items
@@ -2168,7 +2182,7 @@ function renderChurn(site, gran='monthly') {
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false},
-        tooltip:{callbacks:{label:ctx=>` ${ctx.raw}%`}}},
+        tooltip:{callbacks:{label:ctx=>` ${ctx.raw}%${momStr(ctx)}`}}},
       scales:baseScale(v=>v+'%',0),
     },
   });
@@ -2188,7 +2202,7 @@ function renderChurn(site, gran='monthly') {
       responsive:true, maintainAspectRatio:false,
       plugins:{
         legend:{position:'top',labels:{font:{size:10},padding:8,boxWidth:9}},
-        tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.raw}%`}},
+        tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.raw}%${momStr(ctx)}`}},
       },
       scales:{
         x:{stacked:true,grid:{display:false},ticks:{font:{size:10},maxRotation:40}},
