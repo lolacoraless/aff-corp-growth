@@ -824,40 +824,19 @@ Write-Host "HTML updated ($([Math]::Round(($html.Length)/1024,0)) KB)."
 
 # ==== UPLOAD TO GRID (presigned 3-step flow para archivos grandes) ============
 Write-Host "Uploading to Grid..." -ForegroundColor Cyan
-$fileSize = (Get-Item $htmlPath).Length
-
-# Paso 1: reservar slot presigned
-$step1Cfg = '{"skill_version":"3.6.0","doc_id":"01KRE46H4452DPPVSYM5BKXJ14","skip_version_check":true,"presigned_upload":{"filename":"affiliates-dashboard-grid.html","content_type":"text/html"}}'
+# Multipart directo con timeout extendido (presigned proxy tenia bug en backend storage)
+$cfg = '{"skill_version":"3.6.0","doc_id":"01KRE46H4452DPPVSYM5BKXJ14","skip_version_check":true}'
 $tmpCfg = [IO.Path]::GetTempFileName()
-[IO.File]::WriteAllText($tmpCfg, $step1Cfg, [System.Text.Encoding]::ASCII)
-$step1Resp = & "C:\Windows\System32\curl.exe" -s -X POST "https://grid.melioffice.com/api/v1/engine/run" -F "config=<$tmpCfg" -F "file=@$htmlPath"
+[IO.File]::WriteAllText($tmpCfg, $cfg, [System.Text.Encoding]::ASCII)
+$gridResp = & "C:\Windows\System32\curl.exe" -s --max-time 300 -X POST "https://grid.melioffice.com/api/v1/engine/run" -F "config=<$tmpCfg" -F "file=@$htmlPath"
 Remove-Item $tmpCfg -ErrorAction SilentlyContinue
-$step1 = $step1Resp | ConvertFrom-Json
-$uploadUrl = $step1.data.upload_url
-# Extraer slotDocId desde la URL (más robusto que parsear el texto del step con caracter Unicode →)
-$slotDocId = $uploadUrl -replace '.*/documents/([^/]+)/.*','$1'
-
-if (-not $uploadUrl) {
-    Write-Host "Grid upload FAILED (no upload_url)" -ForegroundColor Red
-    Write-Host $step1Resp
+$parsed = $gridResp | ConvertFrom-Json
+if ($parsed.ok) {
+    Write-Host "Grid upload OK: $($parsed.view_url)" -ForegroundColor Green
 } else {
-    # Paso 2: PUT del archivo al URL presigned
-    $putCode = & "C:\Windows\System32\curl.exe" -s -o NUL -w "%{http_code}" -X PUT $uploadUrl -H "Content-Type: text/html" --data-binary "@$htmlPath"
-
-    # Paso 3: confirmar con slot doc_id
-    $confirmJson = "{""skill_version"":""3.6.0"",""skip_version_check"":true,""doc_id"":""$slotDocId"",""confirm_presigned"":true,""file_size"":$fileSize}"
-    $tmpJson = [IO.Path]::GetTempFileName() + ".json"
-    [IO.File]::WriteAllText($tmpJson, $confirmJson, [System.Text.Encoding]::ASCII)
-    $confirmResp = & "C:\Windows\System32\curl.exe" -s -X POST "https://grid.melioffice.com/api/v1/engine/run/json" -H "Content-Type: application/json" -d "@$tmpJson"
-    Remove-Item $tmpJson -ErrorAction SilentlyContinue
-    $parsed = $confirmResp | ConvertFrom-Json
-
-    if ($parsed.ok) {
-        Write-Host "Grid upload OK: $($parsed.view_url)" -ForegroundColor Green
-    } else {
-        Write-Host "Grid upload FAILED (PUT=$putCode)" -ForegroundColor Red
-        Write-Host $confirmResp
-    }
+    Write-Host "Grid upload FAILED" -ForegroundColor Red
+    Write-Host $gridResp
+}
 }
 
 Write-Host ""
