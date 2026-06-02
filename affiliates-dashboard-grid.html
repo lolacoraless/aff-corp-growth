@@ -122,8 +122,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 /* CHART */
 .chart-wrap{padding:12px 16px;position:relative;height:360px}
 .chart-wrap canvas{max-height:360px}
-.chart-wrap.sm{height:280px}
-.chart-wrap.sm canvas{max-height:280px}
+.chart-wrap.sm{height:260px}
+.chart-wrap.sm canvas{max-height:260px}
 
 /* GRID */
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
@@ -2545,7 +2545,7 @@ function buildPage(site) {
           <div class="card-sub">Usuarios que activaron dentro del mismo mes de registro · cantidad y % sobre registros del mes <span style="color:#9CA3AF">(histórico: modelo TD7D · desde abr 2026: Enigma)</span></div>
         </div>
       </div>
-      <div class="chart-wrap"><canvas id="act1-${site}"></canvas></div>
+      <div class="chart-wrap sm"><canvas id="act1-${site}"></canvas></div>
     </div>
     <div class="card">
       <div class="card-hdr">
@@ -2554,7 +2554,7 @@ function buildPage(site) {
           <div class="card-sub">Cohortes por días desde registro hasta primera venta <span style="color:#9CA3AF">(histórico: modelo TD7D · desde abr 2026: Enigma)</span></div>
         </div>
       </div>
-      <div class="chart-wrap"><canvas id="act2-${site}"></canvas></div>
+      <div class="chart-wrap sm"><canvas id="act2-${site}"></canvas></div>
       <div class="footnote">Cohortes recientes pueden subestimar activación si el afiliado aún está dentro del período.</div>
     </div>
   </div>
@@ -2575,7 +2575,7 @@ function buildPage(site) {
           <button class="gran-btn" onclick="setGran('churn','${site}','weekly',this)">Semanal</button>
         </div>
       </div>
-      <div class="chart-wrap"><canvas id="churn1-${site}"></canvas></div>
+      <div class="chart-wrap sm"><canvas id="churn1-${site}"></canvas></div>
     </div>
     <div class="card">
       <div class="card-hdr">
@@ -2584,7 +2584,7 @@ function buildPage(site) {
           <div class="card-sub">Por antigüedad de primera venta del afiliado al momento de churnear <span style="color:#9CA3AF">(histórico: modelo TD7D · desde abr 2026: Enigma)</span></div>
         </div>
       </div>
-      <div class="chart-wrap"><canvas id="churn2-${site}"></canvas></div>
+      <div class="chart-wrap sm"><canvas id="churn2-${site}"></canvas></div>
     </div>
   </div>
 
