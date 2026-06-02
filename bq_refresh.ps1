@@ -837,7 +837,6 @@ if ($parsed.ok) {
     Write-Host "Grid upload FAILED" -ForegroundColor Red
     Write-Host $gridResp
 }
-}
 
 Write-Host ""
 Write-Host "=== DONE in ${totalSec}s ===" -ForegroundColor Cyan
