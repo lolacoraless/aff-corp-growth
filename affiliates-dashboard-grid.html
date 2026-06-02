@@ -1282,14 +1282,24 @@ function renderBeh(site, gran='monthly') {
               return ` ${ctx.dataset.label}: ${fmtK(Math.abs(ctx.raw))}${momStr(ctx)}`;
             },
             footer: items => {
-              const total = items
-                .filter(i => i.dataset.label !== 'Quick Ratio' && i.dataset.label !== 'Quick Ratio Rolling' && i.dataset.label !== 'Inactive' && i.raw != null)
-                .reduce((a, i) => a + (Math.abs(i.raw) || 0), 0);
+              const validItems = items.filter(i => i.dataset.label !== 'Quick Ratio' && i.dataset.label !== 'Quick Ratio Rolling' && i.dataset.label !== 'Inactive' && i.raw != null);
+              const total = validItems.reduce((a, i) => a + (Math.abs(i.raw) || 0), 0);
+              const idx = items[0]?.dataIndex ?? 0;
+              const prevTotal = idx > 0
+                ? validItems.reduce((a, i) => { const p = i.dataset.data[idx - 1]; return a + (p != null ? Math.abs(p) : 0); }, 0)
+                : null;
+              const totalMom = (prevTotal != null && prevTotal > 0)
+                ? `  ${total >= prevTotal ? '▲' : '▼'} ${total >= prevTotal ? '+' : '−'}${Math.abs((total - prevTotal) / prevTotal * 100).toFixed(1)}%`
+                : '';
               const inactive = items.find(i => i.dataset.label === 'Inactive');
               const inactiveVal = inactive?.raw != null ? Math.abs(inactive.raw) : 0;
+              const prevInactive = (idx > 0 && inactive) ? inactive.dataset.data[idx - 1] : null;
+              const inactiveMom = (prevInactive != null && Math.abs(prevInactive) > 0)
+                ? `  ${inactiveVal <= Math.abs(prevInactive) ? '▼' : '▲'} ${inactiveVal <= Math.abs(prevInactive) ? '−' : '+'}${Math.abs((inactiveVal - Math.abs(prevInactive)) / Math.abs(prevInactive) * 100).toFixed(1)}%`
+                : '';
               return [
-                `Total activos: ${fmtK(total)}`,
-                `Inactivos ese mes: ${fmtK(inactiveVal)}`,
+                `Total activos: ${fmtK(total)}${totalMom}`,
+                `Inactivos ese mes: ${fmtK(inactiveVal)}${inactiveMom}`,
               ];
             },
           },
@@ -1939,10 +1949,17 @@ function renderReg(site, gran='monthly') {
               return ` ${ctx.dataset.label}: ${fmt(ctx.raw)}${momStr(ctx)}`;
             },
             footer: items => {
-              const total = items
-                .filter(i => i.dataset.label !== 'Spend POM (LC)')
-                .reduce((a,i) => a+(i.raw||0), 0);
-              return total > 0 ? [`─────────────`, `Total registros: ${fmt(total)}`] : [];
+              const validItems = items.filter(i => i.dataset.label !== 'Spend POM (LC)');
+              const total = validItems.reduce((a,i) => a+(i.raw||0), 0);
+              if (total <= 0) return [];
+              const idx = items[0]?.dataIndex ?? 0;
+              const prevTotal = idx > 0
+                ? validItems.reduce((a, i) => { const p = i.dataset.data[idx - 1]; return a + (p != null ? Math.abs(p) : 0); }, 0)
+                : null;
+              const totalMom = (prevTotal != null && prevTotal > 0)
+                ? `  ${total >= prevTotal ? '▲' : '▼'} ${total >= prevTotal ? '+' : '−'}${Math.abs((total - prevTotal) / prevTotal * 100).toFixed(1)}%`
+                : '';
+              return [`─────────────`, `Total registros: ${fmt(total)}${totalMom}`];
             },
           },
         },
