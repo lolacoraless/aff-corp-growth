@@ -834,7 +834,8 @@ $step1Resp = & "C:\Windows\System32\curl.exe" -s -X POST "https://grid.melioffic
 Remove-Item $tmpCfg -ErrorAction SilentlyContinue
 $step1 = $step1Resp | ConvertFrom-Json
 $uploadUrl = $step1.data.upload_url
-$slotDocId = ($step1.steps | Where-Object {$_.label -eq 'presigned_upload_ready'}).detail -replace '.*→ (\S+) \(.*','$1'
+# Extraer slotDocId desde la URL (más robusto que parsear el texto del step con caracter Unicode →)
+$slotDocId = $uploadUrl -replace '.*/documents/([^/]+)/.*','$1'
 
 if (-not $uploadUrl) {
     Write-Host "Grid upload FAILED (no upload_url)" -ForegroundColor Red
