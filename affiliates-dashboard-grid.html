@@ -222,6 +222,61 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 <div id="page-MLA" class="site-page"></div>
 <div id="global-legend" style="max-width:1200px;margin:0 auto;padding:0 16px 32px"></div>
 
+<div id="glossary" style="max-width:1200px;margin:0 auto;padding:0 16px 48px">
+  <div style="border:1px solid #E5E7EB;border-radius:10px;background:#F9FAFB;padding:20px 24px">
+    <div style="font-size:13px;font-weight:700;color:#111827;margin-bottom:16px;letter-spacing:.01em">📖 Glosario de métricas</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;font-size:11px;color:#374151">
+
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">NMV</div>
+        <dl style="margin:0;display:flex;flex-direction:column;gap:7px">
+          <div><dt style="font-weight:600;color:#111827;display:inline">Share del sitio</dt><dd style="display:inline;margin:0;color:#4B5563"> — NMV afiliados / NMV total sitio × 100</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">NMV</dt><dd style="display:inline;margin:0;color:#4B5563"> — NMV atribuido a afiliados (TD7D hasta mar-26, Enigma desde abr-26)</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">NMV x afiliado (NPA)</dt><dd style="display:inline;margin:0;color:#4B5563"> — NMV afiliados / total afiliados activos (denominador = base total, no solo el segmento)</dd></div>
+        </dl>
+      </div>
+
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Behaviour de afiliados</div>
+        <dl style="margin:0;display:flex;flex-direction:column;gap:7px">
+          <div><dt style="font-weight:600;color:#111827;display:inline">Activos</dt><dd style="display:inline;margin:0;color:#4B5563"> — Afiliados con al menos una venta en el periodo</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">New</dt><dd style="display:inline;margin:0;color:#4B5563"> — Primera venta ever en el periodo</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Recurrentes</dt><dd style="display:inline;margin:0;color:#4B5563"> — Vendieron el mes anterior y también en el periodo actual (ni nuevos ni recuperados)</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Recuperados</dt><dd style="display:inline;margin:0;color:#4B5563"> — Tenían historial, ausentes el mes anterior, volvieron este mes</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Inactivos (churned)</dt><dd style="display:inline;margin:0;color:#4B5563"> — Estaban activos el mes anterior y no vendieron este mes</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Quick Ratio calendario</dt><dd style="display:inline;margin:0;color:#4B5563"> — (New + Recuperados) / Inactivos · solo meses con cierre completo</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Quick Ratio Rolling 30d</dt><dd style="display:inline;margin:0;color:#4B5563"> — (New + Recuperados) / Inactivos en ventana de 30 días corridos · denominador no inflado por inicio de mes</dd></div>
+        </dl>
+      </div>
+
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Registros y tráfico</div>
+        <dl style="margin:0;display:flex;flex-direction:column;gap:7px">
+          <div><dt style="font-weight:600;color:#111827;display:inline">POM</dt><dd style="display:inline;margin:0;color:#4B5563"> — Paid Owned Media: Facebook, TikTok, Google, Instagram, YouTube</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Direct</dt><dd style="display:inline;margin:0;color:#4B5563"> — App, Web, canales propios, orgánico</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">E&amp;G</dt><dd style="display:inline;margin:0;color:#4B5563"> — Empleados &amp; Gestores: registros generados por audiencias internas de MeLi</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Spend POM</dt><dd style="display:inline;margin:0;color:#4B5563"> — Inversión publicitaria Google + Facebook + TikTok en moneda local</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Visitas landing</dt><dd style="display:inline;margin:0;color:#4B5563"> — Sesiones únicas en la landing de registro de afiliados</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">% Conversión</dt><dd style="display:inline;margin:0;color:#4B5563"> — Registros / usuarios únicos que visitaron la landing</dd></div>
+        </dl>
+      </div>
+
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Churn por antigüedad</div>
+        <dl style="margin:0;display:flex;flex-direction:column;gap:7px">
+          <div><dt style="font-weight:600;color:#111827;display:inline">% Churn new</dt><dd style="display:inline;margin:0;color:#4B5563"> — Afiliados nuevos en M-1 que no vendieron en M / total activos en M-1 × 100</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">One Month Wonder</dt><dd style="display:inline;margin:0;color:#4B5563"> — % de churners potenciales con solo 1 mes de actividad histórica</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Early (2–3m)</dt><dd style="display:inline;margin:0;color:#4B5563"> — % de churners potenciales con 2–3 meses de actividad</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Mid (4–6m)</dt><dd style="display:inline;margin:0;color:#4B5563"> — % de churners potenciales con 4–6 meses de actividad</dd></div>
+          <div><dt style="font-weight:600;color:#111827;display:inline">Established (7m+)</dt><dd style="display:inline;margin:0;color:#4B5563"> — % de churners potenciales con 7 o más meses de actividad</dd></div>
+          <div style="margin-top:4px;font-size:10px;color:#9CA3AF">⚠ Valores MTD son churners <em>potenciales</em> — un afiliado que no vendió hasta hoy todavía puede vender antes de fin de mes.</div>
+        </dl>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <script>
 // ═══════════════════════════════════════════════════════
 // PLUGIN REGISTRATION
@@ -1035,7 +1090,6 @@ function renderNmv(site, gran='monthly', seg='all') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:${C.blue}"></span>Share del Sitio</div>
-            <span class="mformula">NMV afiliados / NMV total sitio × 100</span>
           </td>
           <td class="num">${fmtP(mShare,2)}</td>
           <td>${deltaVsAbrPct(mShare, pShare)}</td>
@@ -1043,7 +1097,6 @@ function renderNmv(site, gran='monthly', seg='all') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:${C.green}"></span>NMV (${unit.nmvLabel})</div>
-            <span class="mformula">NMV atribuido a afiliados (TD7D hasta mar-26, Enigma desde abr-26)</span>
           </td>
           <td class="num">${mNmv != null ? fmtN(mNmv,1)+' '+unit.nmvLabel : '—'}</td>
           <td>${deltaVsAbr(mNmv, pNmv)}</td>
@@ -1051,7 +1104,6 @@ function renderNmv(site, gran='monthly', seg='all') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:${C.purple}"></span>NMV x aff (${unit.npaLabel})</div>
-            <span class="mformula">NMV afiliados / total afiliados activos (denominador = base total, no solo el segmento)</span>
           </td>
           <td class="num">${mNpa != null ? fmtN(mNpa,1)+' '+unit.npaLabel : '—'}</td>
           <td>${deltaVsAbr(mNpa, pNpa)}</td>
@@ -1368,7 +1420,6 @@ function renderBeh(site, gran='monthly') {
         <tr style="background:#EFF6FF">
           <td>
             <div class="mname"><span class="dot" style="background:var(--blue)"></span><strong>Total Activos</strong></div>
-            <span class="mformula">Afiliados con al menos una venta en el periodo</span>
           </td>
           <td class="num">${fk(actMtdBeh ?? activeTot)}
             ${actMtdBeh == null ? `<div style="font-size:10px;color:var(--muted)">${lastActiveLbl}</div>` : ''}
@@ -1385,7 +1436,6 @@ function renderBeh(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:#1F2937"></span>New</div>
-            <span class="mformula">Primera venta ever en el periodo</span>
           </td>
           <td class="num">${fk(newMtdBeh)}</td>
           <td>${deltaVsAbr(newMtdBeh, prev.new)}</td>
@@ -1395,7 +1445,6 @@ function renderBeh(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:#6B7280"></span>Recurrentes</div>
-            <span class="mformula">Vendieron el mes anterior y tambien en el periodo actual (ni nuevos ni recuperados)</span>
           </td>
           <td class="num">${fk(retMtd)}</td>
           <td>${deltaVsAbr(retMtd, retPrevMtd)}</td>
@@ -1405,7 +1454,6 @@ function renderBeh(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:#9CA3AF"></span>Recuperados</div>
-            <span class="mformula">Tenian historial, ausentes el mes anterior, volvieron este mes</span>
           </td>
           <td class="num">${fk(recMtdBeh)}</td>
           <td>${deltaVsAbr(recMtdBeh, prev.rec)}</td>
@@ -1415,7 +1463,6 @@ function renderBeh(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:#EF4444"></span>Inactivos</div>
-            <span class="mformula">Estaban activos el mes anterior y no vendieron este mes</span>
           </td>
           <td class="num">${fk(chuMtdBeh)}</td>
           <td>${deltaVsAbr(chuMtdBeh, prev.chu, false)}</td>
@@ -1428,7 +1475,6 @@ function renderBeh(site, gran='monthly') {
               <span style="display:inline-block;width:20px;height:3px;background:${C.orange};border-radius:2px;margin-right:5px"></span>
               Quick Ratio calendario
             </div>
-            <span class="mformula">(New + Recuperados) / Inactivos · solo meses con cierre completo</span>
           </td>
           <td class="num" style="color:${C.orange};font-size:15px">
             ${currMonQr != null ? fmtN(currMonQr) : '—'}
@@ -1455,7 +1501,6 @@ function renderBeh(site, gran='monthly') {
               <span style="display:inline-block;width:20px;height:3px;background:#8B5CF6;border-radius:2px;margin-right:5px"></span>
               <strong>Quick Ratio Rolling 30d</strong>
             </div>
-            <span class="mformula">(New + Recuperados) / Inactivos en ventana de 30 días corridos — denominador no inflado por inicio de mes</span>
           </td>
           <td class="num" style="color:#7C3AED;font-size:15px">
             ${qrR != null ? fmtN(qrR) : '—'}
@@ -1685,7 +1730,7 @@ function renderTraffic(site, gran='monthly', srcFilter='all') {
       <tbody>
         <tr>
           <td><div class="mname"><span class="dot" style="background:#2563EB"></span><strong>POM</strong></div>
-              <span class="mformula">Paid - Facebook, TikTok, Google</span></td>
+</td>
           <td class="num"><strong>${fmt(pomG.tot)}</strong></td>
           <td>${deltaVsAbr(pomG.tot,pomG.totP)}</td>
           <td class="num" style="font-size:11px">${fmtP(pomCvMtd)}</td>
@@ -1694,7 +1739,7 @@ function renderTraffic(site, gran='monthly', srcFilter='all') {
         ${subRows(SRC_POM, '#F8FAFF')}
         <tr>
           <td><div class="mname"><span class="dot" style="background:#EA580C"></span><strong>Direct</strong></div>
-              <span class="mformula">App, Web</span></td>
+</td>
           <td class="num"><strong>${fmt(dirG.tot)}</strong></td>
           <td>${deltaVsAbr(dirG.tot,dirG.totP)}</td>
           <td class="num" style="font-size:11px">${fmtP(dirCvMtd)}</td>
@@ -1990,7 +2035,6 @@ function renderReg(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:#2563EB"></span><strong>POM</strong></div>
-            <span class="mformula">Paid - Facebook, TikTok, Google, Instagram, YouTube</span>
           </td>
           <td class="num"><strong>${fmtK(mtd.pom)}</strong></td>
           <td>${deltaVsAbr(mtd.pom,prev.pom)}</td>
@@ -2002,7 +2046,6 @@ function renderReg(site, gran='monthly') {
         <tr style="background:#F9FAFB">
           <td style="padding-left:24px">
             <div class="mname" style="font-size:11px"><span style="width:6px;height:6px;border-radius:50%;background:#111827;flex-shrink:0;display:inline-block;margin-right:6px"></span>Spend POM</div>
-            <span class="mformula" style="padding-left:18px">Google + Facebook + TikTok - LC</span>
           </td>
           <td class="num" style="font-size:11px"><strong>${fmtK(mtd.spend_pom)} LC</strong></td>
           <td style="font-size:11px"><span class="neu">-</span></td>
@@ -2012,7 +2055,6 @@ function renderReg(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:#EA580C"></span><strong>Direct</strong></div>
-            <span class="mformula">App, Web, canales propios, organico</span>
           </td>
           <td class="num"><strong>${fmtK(mtd.direct)}</strong></td>
           <td>${deltaVsAbr(mtd.direct,prev.direct)}</td>
@@ -2179,7 +2221,6 @@ function renderChurn(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:${C.blue}"></span>% Churn de nuevos</div>
-            <span class="mformula">Afiliados nuevos en M-1 que NO vendieron en M / total activos en M-1 × 100</span>
           </td>
           <td class="num">${fmtP(mtd.pnew)}</td>
           <td>${deltaVsAbrPct(mtd.pnew,prev.pnew,false)}</td>
@@ -2187,7 +2228,6 @@ function renderChurn(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:${C.red}"></span>One Month Wonder</div>
-            <span class="mformula">% de churners potenciales con solo 1 mes de actividad (estimado: activos en ${PREV_MON_SHORT} sin venta en ${CURR_MON_SHORT} 1–${DAYS_ELAPS})</span>
           </td>
           <td class="num">${fmtP(omwMtd)}</td>
           <td>${deltaVsAbrPct(omwMtd, prevOmwMtd, false)}</td>
@@ -2195,7 +2235,6 @@ function renderChurn(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:${C.orange}"></span>Early (2–3m)</div>
-            <span class="mformula">% de churners potenciales con 2–3 meses de actividad (estimado parcial)</span>
           </td>
           <td class="num">${fmtP(earMtd)}</td>
           <td>${deltaVsAbrPct(earMtd, prevEarMtd, false)}</td>
@@ -2203,7 +2242,6 @@ function renderChurn(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:${C.yellow}"></span>Mid (4–6m)</div>
-            <span class="mformula">% de churners potenciales con 4–6 meses de actividad (estimado parcial)</span>
           </td>
           <td class="num">${fmtP(midMtd)}</td>
           <td>${deltaVsAbrPct(midMtd, prevMidMtd, false)}</td>
@@ -2211,7 +2249,6 @@ function renderChurn(site, gran='monthly') {
         <tr>
           <td>
             <div class="mname"><span class="dot" style="background:${C.green}"></span>Established (7m+)</div>
-            <span class="mformula">% de churners potenciales con 7+ meses de actividad (estimado parcial)</span>
           </td>
           <td class="num">${fmtP(estMtd)}</td>
           <td>${deltaVsAbrPct(estMtd, prevEstMtd, true)}</td>
