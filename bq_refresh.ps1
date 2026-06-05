@@ -838,5 +838,157 @@ if ($parsed.ok) {
     Write-Host $gridResp
 }
 
+# ==== PACING BACKTEST AUTO-UPDATE ============================================
+# Trigger: primer corrida del mes con >= 2 dias habiles transcurridos
+$pacingStateFile = "C:\Users\lcorales\Downloads\Claude\aff-corp-growth-repo\pacing_last_month.txt"
+$pacingHtmlPath  = "C:\Users\lcorales\Downloads\Claude\pacing-analysis-mayo26.html"
+$pacingDocId     = "01KSR5A3JWVWGGS9NPC5ZR9XA2"
+
+$lastPacingMonth = if (Test-Path $pacingStateFile) { (Get-Content $pacingStateFile -Raw).Trim() } else { "" }
+
+# Contar dias habiles transcurridos desde el 1 del mes actual
+$bizDays = 0
+$checkD = $CUR_DT
+while ($checkD -lt $now.Date) {
+    if ($checkD.DayOfWeek -ne [DayOfWeek]::Saturday -and $checkD.DayOfWeek -ne [DayOfWeek]::Sunday) {
+        $bizDays++
+    }
+    $checkD = $checkD.AddDays(1)
+}
+
+if ($lastPacingMonth -ne $PREV -and $bizDays -ge 2) {
+    Write-Host ""
+    Write-Host "=== PACING BACKTEST — actualizando con $($PREV_DT.ToString('MMMM yyyy')) cerrado ===" -ForegroundColor Magenta
+    Write-Host "  Dias habiles desde el 1/$($CUR_DT.Month): $bizDays (>= 2 — trigger OK)"
+
+    # Query: activos MTD acumulados dia a dia para 6 meses hist + mes objetivo (PREV)
+    $hist1 = $CUR_DT.AddMonths(-7).ToString("yyyy-MM-dd")  # 7 meses atras = inicio hist
+    $hist6 = $PREV  # mes objetivo = M-1
+
+    $pacingSql = @"
+WITH primera_venta AS (
+  SELECT
+    SIT_SITE_ID,
+    DATE_TRUNC(DATE(ORD_CREATED_DT), MONTH) AS mes,
+    AFFILIATE_ID,
+    MIN(EXTRACT(DAY FROM DATE(ORD_CREATED_DT))) AS primer_dia
+  FROM ``meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY``
+  WHERE DATE(ORD_CREATED_DT) BETWEEN '$hist1' AND '$($PREV_DT.AddMonths(1).AddDays(-1).ToString("yyyy-MM-dd"))'
+    AND ORD_STATUS = 'paid'
+    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID
+    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND CASE WHEN DATE(ORD_CREATED_DT) >= '$ENIGMA' THEN NMV_ENIGMA_TOTAL_AMT_LC
+             ELSE NMV_TD7DCALIB_TOTAL_AMT_LC END > 0
+  GROUP BY 1,2,3
+),
+nuevos_por_dia AS (
+  SELECT SIT_SITE_ID, mes, primer_dia AS dia, COUNT(*) AS nuevos
+  FROM primera_venta GROUP BY 1,2,3
+)
+SELECT
+  SIT_SITE_ID,
+  FORMAT_DATE('%Y-%m-%d', mes) AS mes,
+  dia,
+  SUM(nuevos) OVER (PARTITION BY SIT_SITE_ID, mes ORDER BY dia) AS activos_mtd
+FROM nuevos_por_dia
+ORDER BY SIT_SITE_ID, mes, dia
+"@
+
+    $tmpPacingSql = [IO.Path]::GetTempFileName() + ".sql"
+    [System.IO.File]::WriteAllText($tmpPacingSql, $pacingSql, [System.Text.Encoding]::ASCII)
+    Write-Host "  Corriendo BQ pacing..."
+    $pacingCsv = & cmd /c "bq query --use_legacy_sql=false --format=csv --max_rows=3000 --project_id=meli-bi-data --label=origin:affiliates-pacing-backtest < `"$tmpPacingSql`"" 2>&1
+    Remove-Item $tmpPacingSql -ErrorAction SilentlyContinue
+
+    $pacingRows = $pacingCsv | Where-Object { $_ -match "^(MLB|MLM|MLC|MLA)" }
+    Write-Host "  BQ rows: $($pacingRows.Count)"
+
+    if ($pacingRows.Count -gt 100) {
+        # Procesar: armar estructura por site y mes
+        $byMes = @{}
+        $pacingRows | ForEach-Object {
+            $parts = $_ -split ","
+            $site = $parts[0]; $mes = $parts[1]; $dia = [int]$parts[2]; $activos = [int]$parts[3]
+            if (-not $byMes["$site|$mes"]) { $byMes["$site|$mes"] = @() }
+            $byMes["$site|$mes"] += [PSCustomObject]@{ dia = $dia; activos = $activos }
+        }
+
+        # Identificar meses historicos y mes objetivo
+        $meses = $pacingRows | ForEach-Object { ($_ -split ",")[1] } | Sort-Object -Unique
+        $mesObjetivo = $PREV  # 2026-05-01
+        $mesHist = $meses | Where-Object { $_ -ne $mesObjetivo }
+
+        # Para cada site: calcular avgPacing por dia y proyeccion
+        $rawJson = @()
+        $siteCloses = @{}
+        $SITES = @("MLB","MLM","MLC","MLA")
+        foreach ($site in $SITES) {
+            # Real close = max dia del mes objetivo
+            $objRows = $byMes["$site|$mesObjetivo"]
+            if (-not $objRows) { continue }
+            $realClose = ($objRows | Sort-Object dia | Select-Object -Last 1).activos
+            $siteCloses[$site] = $realClose
+
+            # Calculates para cada dia del mes objetivo
+            $maxDia = ($objRows | Measure-Object -Property dia -Maximum).Maximum
+            for ($d = 1; $d -le $maxDia; $d++) {
+                $actObj = ($objRows | Where-Object { $_.dia -eq $d }).activos
+                if ($null -eq $actObj) { $actObj = 0 }
+
+                # avgPacing = promedio de (activos_at_d / close) sobre meses historicos
+                $ratios = @()
+                foreach ($mh in $mesHist) {
+                    $mhRows = $byMes["$site|$mh"]
+                    if (-not $mhRows) { continue }
+                    $closeH = ($mhRows | Sort-Object dia | Select-Object -Last 1).activos
+                    if ($closeH -le 0) { continue }
+                    $actH = ($mhRows | Where-Object { $_.dia -le $d } | Sort-Object dia | Select-Object -Last 1).activos
+                    if ($null -eq $actH) { $actH = 0 }
+                    $ratios += [double]$actH / [double]$closeH
+                }
+                $avgP = if ($ratios.Count -gt 0) { ($ratios | Measure-Object -Average).Average } else { 0 }
+                $proy = if ($avgP -gt 0) { [math]::Round($actObj / $avgP) } else { 0 }
+
+                $rawJson += "{`"site`":`"$site`",`"dia`":$d,`"activos_may`":$actObj,`"avg_p`":$([math]::Round($avgP,6)),`"proyeccion`":$proy,`"real_mtd`":$realClose}"
+            }
+        }
+
+        # Cargar HTML actual y reemplazar el bloque RAW
+        $pacingHtml = [IO.File]::ReadAllText($pacingHtmlPath, [Text.Encoding]::UTF8)
+        $rawBlock = "const RAW = [`n" + ($rawJson -join ",`n") + "`n];"
+        $pacingHtml = $pacingHtml -replace 'const RAW = \[[\s\S]*?\];', $rawBlock
+
+        # Actualizar referencias de mes objetivo
+        $prevMonthName = $PREV_DT.ToString("MMMM yyyy")  # ej. "mayo 2026"
+        $DAYS_IN_MONTH = [DateTime]::DaysInMonth($PREV_DT.Year, $PREV_DT.Month)
+        $pacingHtml = $pacingHtml -replace 'const DAYS = Array\.from\(\{length:\d+\}', "const DAYS = Array.from({length:$DAYS_IN_MONTH}"
+
+        [IO.File]::WriteAllText($pacingHtmlPath, $pacingHtml, [Text.Encoding]::UTF8)
+        Write-Host "  HTML actualizado."
+
+        # Upload a Grid
+        $pacingCfg = "{`"skill_version`":`"3.6.0`",`"doc_id`":`"$pacingDocId`",`"skip_version_check`":true}"
+        $tmpPacingCfg = [IO.Path]::GetTempFileName()
+        [IO.File]::WriteAllText($tmpPacingCfg, $pacingCfg, [System.Text.Encoding]::ASCII)
+        $pacingResp = & "C:\Windows\System32\curl.exe" -s --max-time 300 -X POST "https://grid.melioffice.com/api/v1/engine/run" -F "config=<$tmpPacingCfg" -F "file=@$pacingHtmlPath"
+        Remove-Item $tmpPacingCfg -ErrorAction SilentlyContinue
+        $pacingParsed = $pacingResp | ConvertFrom-Json
+        if ($pacingParsed.ok) {
+            Write-Host "  Pacing Grid OK: $($pacingParsed.view_url)" -ForegroundColor Green
+            Set-Content -Path $pacingStateFile -Value $PREV -Encoding ASCII
+        } else {
+            Write-Host "  Pacing Grid FAILED: $($pacingParsed.error)" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "  BQ pacing returned too few rows — skip update." -ForegroundColor Yellow
+    }
+} else {
+    if ($lastPacingMonth -eq $PREV) {
+        Write-Host "  Pacing backtest up to date (last: $lastPacingMonth)." -ForegroundColor DarkGray
+    } else {
+        Write-Host "  Pacing: esperando $([math]::Max(0, 2 - $bizDays)) dia(s) habil(es) mas (hoy: $bizDays de 2)." -ForegroundColor DarkGray
+    }
+}
+
 Write-Host ""
 Write-Host "=== DONE in ${totalSec}s ===" -ForegroundColor Cyan

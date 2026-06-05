@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pacing Analysis — Backtest Mayo 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #F8FAFC; color: #1e293b; line-height: 1.5; }
+  .page-wrapper { max-width: 1100px; margin: 0 auto; padding: 32px 20px 60px; }
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 { font-size: 1.75rem; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+  .page-header p { color: #64748b; font-size: 0.95rem; }
+  .banner { background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px; padding: 14px 18px; margin-bottom: 28px; display: flex; align-items: flex-start; gap: 10px; font-size: 0.9rem; color: #14532d; }
+  .banner-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+  .section-title { font-size: 1.25rem; font-weight: 700; color: #0f172a; margin-bottom: 18px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; display: flex; align-items: center; gap: 8px; }
+  .card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04); padding: 24px; margin-bottom: 20px; }
+  .card h3 { font-size: 1rem; font-weight: 700; color: #0f172a; margin-bottom: 16px; }
+  .steps { display: flex; gap: 16px; flex-wrap: wrap; }
+  .step { flex: 1; min-width: 220px; background: #F8FAFC; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .step-icon { font-size: 1.8rem; }
+  .step-num { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; }
+  .step-text { font-size: 0.92rem; color: #334155; font-weight: 500; }
+  .example-table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  th { background: #f1f5f9; padding: 9px 14px; text-align: left; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+  td { padding: 8px 14px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  tr:last-child td { border-bottom: none; }
+  tr.avg-row td { background: #eff6ff; font-weight: 700; color: #1d4ed8; }
+  tr.result-row td { background: #f0fdf4; font-weight: 700; color: #15803d; }
+  .chart-container { position: relative; width: 100%; }
+  .chart-container canvas { max-height: 320px; }
+  .site-section { margin-bottom: 36px; }
+  .site-card-header { border-radius: 12px 12px 0 0; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .site-card-header.mlb { background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border-bottom: 2px solid #16a34a; }
+  .site-card-header.mlm { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-bottom: 2px solid #dc2626; }
+  .site-card-header.mlc { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-bottom: 2px solid #2563eb; }
+  .site-card-header.mla { background: linear-gradient(135deg, #cffafe 0%, #a5f3fc 100%); border-bottom: 2px solid #0891b2; }
+  .site-title { font-size: 1.15rem; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+  .site-meta { font-size: 0.82rem; color: #475569; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .site-meta span { display: flex; align-items: center; gap: 4px; }
+  .badge { padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-yellow { background: #fef9c3; color: #854d0e; }
+  .site-card-body { background: white; border-radius: 0 0 12px 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04); padding: 24px; }
+  .insight-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 18px; }
+  .insight-table th { background: #f8fafc; padding: 7px 12px; font-size: 0.78rem; color: #64748b; border-bottom: 1px solid #e2e8f0; text-align: left; }
+  .insight-table td { padding: 7px 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.82rem; }
+  .insight-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; }
+  .trend-over { color: #dc2626; font-weight: 600; }
+  .trend-ok { color: #16a34a; font-weight: 600; }
+  .trend-neutral { color: #0891b2; font-weight: 600; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 28px; }
+  .summary-card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04); padding: 16px 18px; border-left: 4px solid; }
+  .summary-card.mlb { border-color: #16a34a; }
+  .summary-card.mlm { border-color: #dc2626; }
+  .summary-card.mlc { border-color: #2563eb; }
+  .summary-card.mla { border-color: #0891b2; }
+  .summary-card .sc-site { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin-bottom: 4px; }
+  .summary-card .sc-real { font-size: 1.3rem; font-weight: 800; color: #0f172a; }
+  .summary-card .sc-label { font-size: 0.78rem; color: #64748b; margin-bottom: 8px; }
+  .summary-card .sc-proy { font-size: 0.82rem; color: #475569; line-height: 1.6; }
+  hr.section-sep { border: none; border-top: 2px solid #e2e8f0; margin: 36px 0; }
+  @media (max-width: 680px) { .steps { flex-direction: column; } .site-card-header { flex-direction: column; align-items: flex-start; } }
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <div class="page-header">
+    <h1>📊 Backtest Pacing — Afiliados Mayo 2026</h1>
+    <p>Validación del modelo de proyección sobre un mes cerrado · Ventana histórica: 6 meses cerrados · Generado 5 Jun 2026</p>
+  </div>
+
+  <div class="banner">
+    <span class="banner-icon">✅</span>
+    <div>
+      <strong>Backtest sobre mes cerrado:</strong> Para validar el modelo, se corre sobre <strong>mayo 2026</strong> — mes ya cerrado con resultado conocido. Cada día D, se proyecta el cierre usando el avgPacing calculado sobre los <strong>6 meses previos cerrados (nov-25 a abr-26)</strong>. La proyección se compara contra el <strong>cierre real de mayo</strong>, lo que permite medir el error real del modelo sin comparar vs un parcial.
+    </div>
+  </div>
+
+  <div class="summary-grid">
+    <div class="summary-card mlb">
+      <div class="sc-site">🇧🇷 MLB</div>
+      <div class="sc-real">1.135.244</div>
+      <div class="sc-label">Cierre real Mayo</div>
+      <div class="sc-proy">D15: <strong>1.111.846</strong> · Error <span style="color:#16a34a">−2,1%</span><br>D27: <strong>1.123.946</strong> · Error <span style="color:#16a34a">−1,0%</span></div>
+    </div>
+    <div class="summary-card mlm">
+      <div class="sc-site">🇲🇽 MLM</div>
+      <div class="sc-real">185.450</div>
+      <div class="sc-label">Cierre real Mayo</div>
+      <div class="sc-proy">D15: <strong>168.630</strong> · Error <span style="color:#16a34a">−9,1%</span><br>D27: <strong>175.376</strong> · Error <span style="color:#16a34a">−5,4%</span></div>
+    </div>
+    <div class="summary-card mlc">
+      <div class="sc-site">🇨🇱 MLC</div>
+      <div class="sc-real">36.250</div>
+      <div class="sc-label">Cierre real Mayo</div>
+      <div class="sc-proy">D15: <strong>38.475</strong> · Error <span style="color:#dc2626">+6,1%</span><br>D27: <strong>36.407</strong> · Error <span style="color:#dc2626">+0,4%</span></div>
+    </div>
+    <div class="summary-card mla">
+      <div class="sc-site">🇦🇷 MLA</div>
+      <div class="sc-real">83.967</div>
+      <div class="sc-label">Cierre real Mayo</div>
+      <div class="sc-proy">D15: <strong>101.577</strong> · Error <span style="color:#dc2626">+21,0%</span><br>D27: <strong>87.063</strong> · Error <span style="color:#dc2626">+3,7%</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">🧮 Sección 1: ¿Cómo funciona el modelo de pacing?</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h3>Fórmula: Proyección = MTD ÷ avgPacing</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-icon">🗂️</div>
+        <div class="step-num">Paso 1</div>
+        <div class="step-text">Tomamos los <strong>últimos 6 meses cerrados</strong> y calculamos cuántos afiliados activos tuvo cada uno al cierre</div>
+      </div>
+      <div class="step">
+        <div class="step-icon">%</div>
+        <div class="step-num">Paso 2</div>
+        <div class="step-text">Para cada mes y cada día D: calculamos el ratio <em>(activos al día D) ÷ (cierre total)</em>. Promediamos los 6 ratios → <strong>avgPacing al día D</strong></div>
+      </div>
+      <div class="step">
+        <div class="step-icon">➗</div>
+        <div class="step-num">Paso 3</div>
+        <div class="step-text">Dividimos los activos MTD por ese ratio → <strong>proyección del cierre</strong><br><em style="font-size:0.85em;color:#64748b">Proyección = MTD_D ÷ avgPacing_D</em></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h3>Con datos reales — 🇧🇷 MLB al día 10: modelo subestima (error −5,5%)</h3>
+    <p style="font-size:0.875rem;color:#64748b;margin-bottom:14px">Ejemplo con 4 de los 6 meses históricos mostrados (el modelo real incluye también nov-25 y dic-25 en el promedio → <strong>avgPacing D10 real: 50,63%</strong>).</p>
+    <div class="example-table-wrap">
+      <table>
+        <thead><tr><th>Mes</th><th>Activos al D10</th><th>Cierre total</th><th>Ratio (al D10)</th></tr></thead>
+        <tbody>
+          <tr><td>Ene-26</td><td>196.884</td><td>524.581</td><td>37,5%</td></tr>
+          <tr><td>Feb-26</td><td>403.161</td><td>733.467</td><td>55,0%</td></tr>
+          <tr><td>Mar-26</td><td>487.314</td><td>930.256</td><td>52,4%</td></tr>
+          <tr><td>Abr-26</td><td>477.719</td><td>966.105</td><td>49,5%</td></tr>
+          <tr class="avg-row"><td colspan="3">avgPacing D10 real (incl. nov-25 y dic-25, 6 meses)</td><td><strong>50,63%</strong></td></tr>
+          <tr class="result-row"><td colspan="4">Mayo D10: Activos = <strong>543.049</strong> → Proyección = 543.049 ÷ 50,63% = <strong>1.072.567</strong> · Real: 1.135.244 · Error −5,5%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h3>Con datos reales — 🇦🇷 MLA al día 10: modelo subestima al inicio, sobreestima al D15</h3>
+    <p style="font-size:0.875rem;color:#64748b;margin-bottom:14px">MLA muestra altísima dispersión por el crecimiento explosivo del programa. El avgPacing resultante no captura bien el estado actual.</p>
+    <div class="example-table-wrap">
+      <table>
+        <thead><tr><th>Mes</th><th>Activos al D10</th><th>Cierre total</th><th>Ratio (al D10)</th></tr></thead>
+        <tbody>
+          <tr><td>Ene-26</td><td>345</td><td>744</td><td>46,4%</td></tr>
+          <tr><td>Feb-26</td><td>758</td><td>2.656</td><td>28,5%</td></tr>
+          <tr><td>Mar-26</td><td>16.683</td><td>58.170</td><td>28,7%</td></tr>
+          <tr><td>Abr-26</td><td>29.494</td><td>75.116</td><td>39,3%</td></tr>
+          <tr class="avg-row"><td colspan="3">avgPacing D10 real (incl. nov-25 y dic-25, 6 meses)</td><td><strong>42,23%</strong></td></tr>
+          <tr class="result-row" style="background:#fff7ed"><td colspan="4" style="color:#b45309">Mayo D10: Activos = <strong>33.380</strong> → Proyección = 33.380 ÷ 42,23% = <strong>79.048</strong> · Real: 83.967 · Error −5,9%<br><span style="font-size:0.82em;font-weight:400">El modelo sobreestima fuertemente al D15 (+21%) por el pico de activos de días 11-15 en mayo vs histórico.</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:12px 16px;margin-top:14px;font-size:0.83rem;color:#92400e;line-height:1.6">
+      <strong>¿Por qué tanta dispersión en MLA en mayo?</strong> El programa sigue creciendo rápidamente. Los días 11-15 de mayo mostraron un pico inusual de activos (de 33K a 55K en 4 días) que no tiene correlato en la misma velocidad en los meses históricos, lo que empuja la proyección al alza en esa ventana. El modelo converge al D27 (error +3,7%).
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Ratio histórico promedio por site — avgPacing (nov-25 a abr-26)</h3>
+    <p style="font-size:0.875rem;color:#64748b;margin-bottom:16px">Qué % del cierre ya estaba activo al día D, promediado sobre los 6 meses cerrados previos a mayo. Esta curva divide el MTD para proyectar el cierre.</p>
+    <div class="chart-container"><canvas id="chartAvgPacing"></canvas></div>
+  </div>
+
+  <hr class="section-sep">
+
+  <div class="section-title">📈 Sección 2: Backtest Mayo 2026 — Proyección diaria vs Cierre real</div>
+
+  <div class="site-section" id="site-MLB">
+    <div class="site-card-header mlb">
+      <div class="site-title">🇧🇷 MLB — Brasil</div>
+      <div class="site-meta">
+        <span>Cierre real: <strong>1.135.244</strong></span>
+        <span>Proy. D15: <strong>1.111.846</strong> (−2,1%)</span>
+        <span>Proy. D27: <strong>1.123.946</strong> (−1,0%)</span>
+        <span class="badge badge-green">Muy preciso desde D15</span>
+      </div>
+    </div>
+    <div class="site-card-body">
+      <div class="chart-container"><canvas id="chartMLB"></canvas></div>
+      <table class="insight-table"><thead><tr><th>Período</th><th>Proy. media</th><th>Error medio</th><th>Tendencia</th></tr></thead><tbody id="insightMLB"></tbody></table>
+    </div>
+  </div>
+
+  <div class="site-section" id="site-MLM">
+    <div class="site-card-header mlm">
+      <div class="site-title">🇲🇽 MLM — México</div>
+      <div class="site-meta">
+        <span>Cierre real: <strong>185.450</strong></span>
+        <span>Proy. D15: <strong>168.630</strong> (−9,1%)</span>
+        <span>Proy. D27: <strong>175.376</strong> (−5,4%)</span>
+        <span class="badge badge-yellow">Subestima, converge parcialmente al D31</span>
+      </div>
+    </div>
+    <div class="site-card-body">
+      <div class="chart-container"><canvas id="chartMLM"></canvas></div>
+      <table class="insight-table"><thead><tr><th>Período</th><th>Proy. media</th><th>Error medio</th><th>Tendencia</th></tr></thead><tbody id="insightMLM"></tbody></table>
+    </div>
+  </div>
+
+  <div class="site-section" id="site-MLC">
+    <div class="site-card-header mlc">
+      <div class="site-title">🇨🇱 MLC — Chile</div>
+      <div class="site-meta">
+        <span>Cierre real: <strong>36.250</strong></span>
+        <span>Proy. D15: <strong>38.475</strong> (+6,1%)</span>
+        <span>Proy. D27: <strong>36.407</strong> (+0,4%)</span>
+        <span class="badge badge-green">Muy preciso desde D27</span>
+      </div>
+    </div>
+    <div class="site-card-body">
+      <div class="chart-container"><canvas id="chartMLC"></canvas></div>
+      <table class="insight-table"><thead><tr><th>Período</th><th>Proy. media</th><th>Error medio</th><th>Tendencia</th></tr></thead><tbody id="insightMLC"></tbody></table>
+    </div>
+  </div>
+
+  <div class="site-section" id="site-MLA">
+    <div class="site-card-header mla">
+      <div class="site-title">🇦🇷 MLA — Argentina</div>
+      <div class="site-meta">
+        <span>Cierre real: <strong>83.967</strong></span>
+        <span>Proy. D15: <strong>101.577</strong> (+21,0%)</span>
+        <span>Proy. D27: <strong>87.063</strong> (+3,7%)</span>
+        <span class="badge badge-yellow">Sobreestima fuerte al inicio, converge al D27</span>
+      </div>
+    </div>
+    <div class="site-card-body">
+      <div class="chart-container"><canvas id="chartMLA"></canvas></div>
+      <table class="insight-table"><thead><tr><th>Período</th><th>Proy. media</th><th>Error medio</th><th>Tendencia</th></tr></thead><tbody id="insightMLA"></tbody></table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// DATA — Backtest Mayo 2026 · 6 meses históricos (nov-25 a abr-26)
+const RAW = [
+{"site":"MLB","dia":1,"activos_may":81075,"avg_p":0.102692,"proyeccion":789499,"real_mtd":1135244},
+{"site":"MLB","dia":2,"activos_may":138871,"avg_p":0.178767,"proyeccion":776826,"real_mtd":1135244},
+{"site":"MLB","dia":3,"activos_may":189030,"avg_p":0.239224,"proyeccion":790181,"real_mtd":1135244},
+{"site":"MLB","dia":4,"activos_may":259466,"avg_p":0.287644,"proyeccion":902038,"real_mtd":1135244},
+{"site":"MLB","dia":5,"activos_may":334399,"avg_p":0.330695,"proyeccion":1011200,"real_mtd":1135244},
+{"site":"MLB","dia":6,"activos_may":391662,"avg_p":0.37044,"proyeccion":1057289,"real_mtd":1135244},
+{"site":"MLB","dia":7,"activos_may":440955,"avg_p":0.40526,"proyeccion":1088079,"real_mtd":1135244},
+{"site":"MLB","dia":8,"activos_may":482037,"avg_p":0.437949,"proyeccion":1100670,"real_mtd":1135244},
+{"site":"MLB","dia":9,"activos_may":513007,"avg_p":0.472456,"proyeccion":1085829,"real_mtd":1135244},
+{"site":"MLB","dia":10,"activos_may":543049,"avg_p":0.506308,"proyeccion":1072567,"real_mtd":1135244},
+{"site":"MLB","dia":11,"activos_may":585575,"avg_p":0.541093,"proyeccion":1082208,"real_mtd":1135244},
+{"site":"MLB","dia":12,"activos_may":627126,"avg_p":0.572659,"proyeccion":1095113,"real_mtd":1135244},
+{"site":"MLB","dia":13,"activos_may":664665,"avg_p":0.601664,"proyeccion":1104710,"real_mtd":1135244},
+{"site":"MLB","dia":14,"activos_may":698102,"avg_p":0.627409,"proyeccion":1112674,"real_mtd":1135244},
+{"site":"MLB","dia":15,"activos_may":726816,"avg_p":0.653702,"proyeccion":1111846,"real_mtd":1135244},
+{"site":"MLB","dia":16,"activos_may":749969,"avg_p":0.679963,"proyeccion":1102956,"real_mtd":1135244},
+{"site":"MLB","dia":17,"activos_may":774721,"avg_p":0.705353,"proyeccion":1098345,"real_mtd":1135244},
+{"site":"MLB","dia":18,"activos_may":807530,"avg_p":0.729771,"proyeccion":1106552,"real_mtd":1135244},
+{"site":"MLB","dia":19,"activos_may":839237,"avg_p":0.754652,"proyeccion":1112085,"real_mtd":1135244},
+{"site":"MLB","dia":20,"activos_may":870464,"avg_p":0.778643,"proyeccion":1117924,"real_mtd":1135244},
+{"site":"MLB","dia":21,"activos_may":899278,"avg_p":0.800852,"proyeccion":1122901,"real_mtd":1135244},
+{"site":"MLB","dia":22,"activos_may":923721,"avg_p":0.822437,"proyeccion":1123152,"real_mtd":1135244},
+{"site":"MLB","dia":23,"activos_may":943744,"avg_p":0.844794,"proyeccion":1117129,"real_mtd":1135244},
+{"site":"MLB","dia":24,"activos_may":964490,"avg_p":0.866267,"proyeccion":1113387,"real_mtd":1135244},
+{"site":"MLB","dia":25,"activos_may":993206,"avg_p":0.886822,"proyeccion":1119960,"real_mtd":1135244},
+{"site":"MLB","dia":26,"activos_may":1021551,"avg_p":0.909446,"proyeccion":1123267,"real_mtd":1135244},
+{"site":"MLB","dia":27,"activos_may":1048672,"avg_p":0.933027,"proyeccion":1123946,"real_mtd":1135244},
+{"site":"MLB","dia":28,"activos_may":1073457,"avg_p":0.957378,"proyeccion":1121247,"real_mtd":1135244},
+{"site":"MLB","dia":29,"activos_may":1096633,"avg_p":0.969386,"proyeccion":1131266,"real_mtd":1135244},
+{"site":"MLB","dia":30,"activos_may":1115417,"avg_p":0.98963,"proyeccion":1127105,"real_mtd":1135244},
+{"site":"MLB","dia":31,"activos_may":1135244,"avg_p":1.0,"proyeccion":1135244,"real_mtd":1135244},
+{"site":"MLM","dia":1,"activos_may":9128,"avg_p":0.062189,"proyeccion":146779,"real_mtd":185450},
+{"site":"MLM","dia":2,"activos_may":15962,"avg_p":0.112375,"proyeccion":142042,"real_mtd":185450},
+{"site":"MLM","dia":3,"activos_may":22157,"avg_p":0.155833,"proyeccion":142184,"real_mtd":185450},
+{"site":"MLM","dia":4,"activos_may":29885,"avg_p":0.194849,"proyeccion":153375,"real_mtd":185450},
+{"site":"MLM","dia":5,"activos_may":37943,"avg_p":0.229457,"proyeccion":165360,"real_mtd":185450},
+{"site":"MLM","dia":6,"activos_may":45278,"avg_p":0.262235,"proyeccion":172662,"real_mtd":185450},
+{"site":"MLM","dia":7,"activos_may":51440,"avg_p":0.293369,"proyeccion":175343,"real_mtd":185450},
+{"site":"MLM","dia":8,"activos_may":57627,"avg_p":0.323544,"proyeccion":178112,"real_mtd":185450},
+{"site":"MLM","dia":9,"activos_may":62789,"avg_p":0.355968,"proyeccion":176390,"real_mtd":185450},
+{"site":"MLM","dia":10,"activos_may":66838,"avg_p":0.389357,"proyeccion":171663,"real_mtd":185450},
+{"site":"MLM","dia":11,"activos_may":72180,"avg_p":0.422421,"proyeccion":170872,"real_mtd":185450},
+{"site":"MLM","dia":12,"activos_may":77896,"avg_p":0.45445,"proyeccion":171407,"real_mtd":185450},
+{"site":"MLM","dia":13,"activos_may":83451,"avg_p":0.490002,"proyeccion":170307,"real_mtd":185450},
+{"site":"MLM","dia":14,"activos_may":88968,"avg_p":0.524619,"proyeccion":169586,"real_mtd":185450},
+{"site":"MLM","dia":15,"activos_may":94191,"avg_p":0.558565,"proyeccion":168630,"real_mtd":185450},
+{"site":"MLM","dia":16,"activos_may":98990,"avg_p":0.594617,"proyeccion":166477,"real_mtd":185450},
+{"site":"MLM","dia":17,"activos_may":103644,"avg_p":0.631298,"proyeccion":164176,"real_mtd":185450},
+{"site":"MLM","dia":18,"activos_may":109123,"avg_p":0.663406,"proyeccion":164489,"real_mtd":185450},
+{"site":"MLM","dia":19,"activos_may":114895,"avg_p":0.694037,"proyeccion":165546,"real_mtd":185450},
+{"site":"MLM","dia":20,"activos_may":120199,"avg_p":0.723723,"proyeccion":166084,"real_mtd":185450},
+{"site":"MLM","dia":21,"activos_may":125278,"avg_p":0.752337,"proyeccion":166519,"real_mtd":185450},
+{"site":"MLM","dia":22,"activos_may":130129,"avg_p":0.779837,"proyeccion":166867,"real_mtd":185450},
+{"site":"MLM","dia":23,"activos_may":134600,"avg_p":0.807129,"proyeccion":166764,"real_mtd":185450},
+{"site":"MLM","dia":24,"activos_may":138965,"avg_p":0.833331,"proyeccion":166759,"real_mtd":185450},
+{"site":"MLM","dia":25,"activos_may":145848,"avg_p":0.858957,"proyeccion":169797,"real_mtd":185450},
+{"site":"MLM","dia":26,"activos_may":153173,"avg_p":0.886035,"proyeccion":172875,"real_mtd":185450},
+{"site":"MLM","dia":27,"activos_may":160225,"avg_p":0.913609,"proyeccion":175376,"real_mtd":185450},
+{"site":"MLM","dia":28,"activos_may":166874,"avg_p":0.942478,"proyeccion":177059,"real_mtd":185450},
+{"site":"MLM","dia":29,"activos_may":173246,"avg_p":0.958846,"proyeccion":180682,"real_mtd":185450},
+{"site":"MLM","dia":30,"activos_may":179358,"avg_p":0.985235,"proyeccion":182046,"real_mtd":185450},
+{"site":"MLM","dia":31,"activos_may":185450,"avg_p":1.0,"proyeccion":185450,"real_mtd":185450},
+{"site":"MLC","dia":1,"activos_may":2218,"avg_p":0.077623,"proyeccion":28574,"real_mtd":36250},
+{"site":"MLC","dia":2,"activos_may":3766,"avg_p":0.133376,"proyeccion":28236,"real_mtd":36250},
+{"site":"MLC","dia":3,"activos_may":5378,"avg_p":0.180822,"proyeccion":29742,"real_mtd":36250},
+{"site":"MLC","dia":4,"activos_may":7367,"avg_p":0.221478,"proyeccion":33263,"real_mtd":36250},
+{"site":"MLC","dia":5,"activos_may":9398,"avg_p":0.260437,"proyeccion":36085,"real_mtd":36250},
+{"site":"MLC","dia":6,"activos_may":11198,"avg_p":0.294977,"proyeccion":37962,"real_mtd":36250},
+{"site":"MLC","dia":7,"activos_may":12773,"avg_p":0.324297,"proyeccion":39387,"real_mtd":36250},
+{"site":"MLC","dia":8,"activos_may":14094,"avg_p":0.35359,"proyeccion":39860,"real_mtd":36250},
+{"site":"MLC","dia":9,"activos_may":14917,"avg_p":0.384908,"proyeccion":38755,"real_mtd":36250},
+{"site":"MLC","dia":10,"activos_may":15830,"avg_p":0.416452,"proyeccion":38012,"real_mtd":36250},
+{"site":"MLC","dia":11,"activos_may":17090,"avg_p":0.448046,"proyeccion":38143,"real_mtd":36250},
+{"site":"MLC","dia":12,"activos_may":18300,"avg_p":0.479158,"proyeccion":38192,"real_mtd":36250},
+{"site":"MLC","dia":13,"activos_may":19496,"avg_p":0.508736,"proyeccion":38322,"real_mtd":36250},
+{"site":"MLC","dia":14,"activos_may":20607,"avg_p":0.533969,"proyeccion":38592,"real_mtd":36250},
+{"site":"MLC","dia":15,"activos_may":21564,"avg_p":0.560467,"proyeccion":38475,"real_mtd":36250},
+{"site":"MLC","dia":16,"activos_may":22328,"avg_p":0.591213,"proyeccion":37766,"real_mtd":36250},
+{"site":"MLC","dia":17,"activos_may":23212,"avg_p":0.621568,"proyeccion":37344,"real_mtd":36250},
+{"site":"MLC","dia":18,"activos_may":24368,"avg_p":0.650817,"proyeccion":37442,"real_mtd":36250},
+{"site":"MLC","dia":19,"activos_may":25484,"avg_p":0.681565,"proyeccion":37390,"real_mtd":36250},
+{"site":"MLC","dia":20,"activos_may":26485,"avg_p":0.710283,"proyeccion":37288,"real_mtd":36250},
+{"site":"MLC","dia":21,"activos_may":27391,"avg_p":0.736449,"proyeccion":37193,"real_mtd":36250},
+{"site":"MLC","dia":22,"activos_may":28272,"avg_p":0.764436,"proyeccion":36984,"real_mtd":36250},
+{"site":"MLC","dia":23,"activos_may":28930,"avg_p":0.790899,"proyeccion":36579,"real_mtd":36250},
+{"site":"MLC","dia":24,"activos_may":29737,"avg_p":0.8153,"proyeccion":36474,"real_mtd":36250},
+{"site":"MLC","dia":25,"activos_may":30772,"avg_p":0.840417,"proyeccion":36615,"real_mtd":36250},
+{"site":"MLC","dia":26,"activos_may":31738,"avg_p":0.86834,"proyeccion":36550,"real_mtd":36250},
+{"site":"MLC","dia":27,"activos_may":32691,"avg_p":0.897931,"proyeccion":36407,"real_mtd":36250},
+{"site":"MLC","dia":28,"activos_may":33679,"avg_p":0.93163,"proyeccion":36151,"real_mtd":36250},
+{"site":"MLC","dia":29,"activos_may":34607,"avg_p":0.949773,"proyeccion":36437,"real_mtd":36250},
+{"site":"MLC","dia":30,"activos_may":35314,"avg_p":0.983356,"proyeccion":35912,"real_mtd":36250},
+{"site":"MLC","dia":31,"activos_may":36250,"avg_p":1.0,"proyeccion":36250,"real_mtd":36250},
+{"site":"MLA","dia":1,"activos_may":3785,"avg_p":0.132183,"proyeccion":28635,"real_mtd":83967},
+{"site":"MLA","dia":2,"activos_may":6800,"avg_p":0.17473,"proyeccion":38917,"real_mtd":83967},
+{"site":"MLA","dia":3,"activos_may":9816,"avg_p":0.221828,"proyeccion":44251,"real_mtd":83967},
+{"site":"MLA","dia":4,"activos_may":14088,"avg_p":0.260051,"proyeccion":54174,"real_mtd":83967},
+{"site":"MLA","dia":5,"activos_may":18586,"avg_p":0.2894,"proyeccion":64223,"real_mtd":83967},
+{"site":"MLA","dia":6,"activos_may":22392,"avg_p":0.317823,"proyeccion":70454,"real_mtd":83967},
+{"site":"MLA","dia":7,"activos_may":25905,"avg_p":0.341818,"proyeccion":75786,"real_mtd":83967},
+{"site":"MLA","dia":8,"activos_may":28875,"avg_p":0.366194,"proyeccion":78852,"real_mtd":83967},
+{"site":"MLA","dia":9,"activos_may":31053,"avg_p":0.393791,"proyeccion":78857,"real_mtd":83967},
+{"site":"MLA","dia":10,"activos_may":33380,"avg_p":0.422274,"proyeccion":79048,"real_mtd":83967},
+{"site":"MLA","dia":11,"activos_may":39221,"avg_p":0.449289,"proyeccion":87296,"real_mtd":83967},
+{"site":"MLA","dia":12,"activos_may":44479,"avg_p":0.477762,"proyeccion":93099,"real_mtd":83967},
+{"site":"MLA","dia":13,"activos_may":49674,"avg_p":0.503355,"proyeccion":98686,"real_mtd":83967},
+{"site":"MLA","dia":14,"activos_may":53043,"avg_p":0.52397,"proyeccion":101233,"real_mtd":83967},
+{"site":"MLA","dia":15,"activos_may":55723,"avg_p":0.548577,"proyeccion":101577,"real_mtd":83967},
+{"site":"MLA","dia":16,"activos_may":57724,"avg_p":0.574346,"proyeccion":100504,"real_mtd":83967},
+{"site":"MLA","dia":17,"activos_may":59920,"avg_p":0.602538,"proyeccion":99446,"real_mtd":83967},
+{"site":"MLA","dia":18,"activos_may":62640,"avg_p":0.629106,"proyeccion":99570,"real_mtd":83967},
+{"site":"MLA","dia":19,"activos_may":64959,"avg_p":0.651272,"proyeccion":99742,"real_mtd":83967},
+{"site":"MLA","dia":20,"activos_may":67052,"avg_p":0.678134,"proyeccion":98877,"real_mtd":83967},
+{"site":"MLA","dia":21,"activos_may":69090,"avg_p":0.704886,"proyeccion":98016,"real_mtd":83967},
+{"site":"MLA","dia":22,"activos_may":70780,"avg_p":0.72949,"proyeccion":97027,"real_mtd":83967},
+{"site":"MLA","dia":23,"activos_may":71887,"avg_p":0.750421,"proyeccion":95796,"real_mtd":83967},
+{"site":"MLA","dia":24,"activos_may":72961,"avg_p":0.775656,"proyeccion":94064,"real_mtd":83967},
+{"site":"MLA","dia":25,"activos_may":74338,"avg_p":0.805972,"proyeccion":92234,"real_mtd":83967},
+{"site":"MLA","dia":26,"activos_may":76075,"avg_p":0.84188,"proyeccion":90363,"real_mtd":83967},
+{"site":"MLA","dia":27,"activos_may":77781,"avg_p":0.893391,"proyeccion":87063,"real_mtd":83967},
+{"site":"MLA","dia":28,"activos_may":79652,"avg_p":0.941915,"proyeccion":84564,"real_mtd":83967},
+{"site":"MLA","dia":29,"activos_may":81308,"avg_p":0.95914,"proyeccion":84772,"real_mtd":83967},
+{"site":"MLA","dia":30,"activos_may":82532,"avg_p":0.988889,"proyeccion":83459,"real_mtd":83967},
+{"site":"MLA","dia":31,"activos_may":83967,"avg_p":1.0,"proyeccion":83967,"real_mtd":83967}
+];
+
+function fmtNum(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(2)+'M';
+  if (n >= 1e3) return Math.round(n/1e3)+'K';
+  return Math.round(n).toString();
+}
+function fmtPct(n) { return (n>=0?'+':'')+n.toFixed(1)+'%'; }
+function pctError(proj,real) { return ((proj-real)/real)*100; }
+function getBySite(site) { return RAW.filter(d=>d.site===site).sort((a,b)=>a.dia-b.dia); }
+const SITE_COLORS = { MLB:'#16a34a', MLM:'#dc2626', MLC:'#2563eb', MLA:'#0891b2' };
+const DAYS = Array.from({length:31},(_,i)=>i+1);
+
+(function buildAvgPacingChart() {
+  const datasets = ['MLB','MLM','MLC','MLA'].map(site => ({
+    label: site,
+    data: getBySite(site).map(d=>+(d.avg_p*100).toFixed(2)),
+    borderColor: SITE_COLORS[site],
+    backgroundColor: SITE_COLORS[site]+'18',
+    borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: 0.35, fill: false
+  }));
+  new Chart(document.getElementById('chartAvgPacing'), {
+    type:'line', data:{labels:DAYS,datasets},
+    options:{ animation:false, responsive:true, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{position:'top',labels:{font:{size:12},padding:16}},
+        tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`}} },
+      scales:{
+        x:{title:{display:true,text:'Día del mes',color:'#64748b',font:{size:11}},grid:{color:'#f1f5f9'},ticks:{color:'#64748b',font:{size:11}}},
+        y:{title:{display:true,text:'avgPacing (%)',color:'#64748b',font:{size:11}},min:0,max:100,grid:{color:'#f1f5f9'},ticks:{color:'#64748b',font:{size:11},callback:v=>v+'%'}}
+      }
+    }
+  });
+})();
+
+function buildSiteChart(site, canvasId) {
+  const data = getBySite(site);
+  const real = data[0].real_mtd;
+  const color = SITE_COLORS[site];
+  const projValues = data.map(d=>d.proyeccion);
+  const datasets = [
+    {label:'_above',data:projValues.map(v=>v>real?v:real),borderWidth:0,pointRadius:0,fill:{target:1,above:'rgba(220,38,38,0.10)',below:'rgba(0,0,0,0)'},tension:0.35,borderColor:'transparent',backgroundColor:'transparent'},
+    {label:'Cierre real May',data:Array(31).fill(real),borderColor:'#0f172a',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,tension:0},
+    {label:'_below',data:projValues.map(v=>v<real?v:real),borderWidth:0,pointRadius:0,fill:{target:1,above:'rgba(0,0,0,0)',below:'rgba(22,163,74,0.12)'},tension:0.35,borderColor:'transparent',backgroundColor:'transparent'},
+    {label:'Proyección del cierre',data:projValues,borderColor:color,backgroundColor:color+'22',borderWidth:2.5,pointRadius:ctx=>ctx.dataIndex===30?6:3,pointBackgroundColor:color,tension:0.35,fill:false}
+  ];
+  const allVals=[...projValues,real];
+  new Chart(document.getElementById(canvasId),{
+    type:'line',data:{labels:DAYS,datasets},
+    options:{animation:false,responsive:true,interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{filter:item=>!item.text.startsWith('_'),font:{size:12},padding:16}},
+        tooltip:{filter:item=>!item.dataset.label.startsWith('_'),callbacks:{label:ctx=>{
+          if(ctx.dataset.label==='Cierre real May') return ` Cierre real: ${fmtNum(ctx.parsed.y)}`;
+          return ` Proyeccion: ${fmtNum(ctx.parsed.y)} (error: ${fmtPct(pctError(ctx.parsed.y,real))})`;
+        }}}
+      },
+      scales:{
+        x:{title:{display:true,text:'Dia de mayo',color:'#64748b',font:{size:11}},grid:{color:'#f1f5f9'},ticks:{color:'#64748b',font:{size:11}}},
+        y:{min:Math.min(...allVals)*0.92,max:Math.max(...allVals)*1.06,grid:{color:'#f1f5f9'},ticks:{color:'#64748b',font:{size:11},callback:v=>fmtNum(v)}}
+      }
+    }
+  });
+}
+buildSiteChart('MLB','chartMLB');
+buildSiteChart('MLM','chartMLM');
+buildSiteChart('MLC','chartMLC');
+buildSiteChart('MLA','chartMLA');
+
+function buildInsightTable(site, tbodyId) {
+  const data = getBySite(site);
+  const real = data[0].real_mtd;
+  const periods = [{label:'D1 - D7',from:1,to:7},{label:'D8 - D14',from:8,to:14},{label:'D15 - D31',from:15,to:31}];
+  const tbody = document.getElementById(tbodyId);
+  tbody.innerHTML = '';
+  periods.forEach(p => {
+    const slice = data.filter(d=>d.dia>=p.from&&d.dia<=p.to);
+    const avgProy = slice.reduce((s,d)=>s+d.proyeccion,0)/slice.length;
+    const avgErr = slice.reduce((s,d)=>s+pctError(d.proyeccion,real),0)/slice.length;
+    const first=pctError(slice[0].proyeccion,real), last=pctError(slice[slice.length-1].proyeccion,real);
+    let trend,trendClass;
+    if(Math.abs(avgErr)<5){trend='Estable / preciso';trendClass='trend-ok';}
+    else if(avgErr>15){trend='Sobreestimo fuerte';trendClass='trend-over';}
+    else if(avgErr>5){trend=last<first?'Convergiendo':'Sobreestimo';trendClass=last<first?'trend-neutral':'trend-over';}
+    else if(avgErr<-5){trend=last>first?'Subestimo (mejorando)':'Subestimo';trendClass='trend-neutral';}
+    else{trend='Cercano al real';trendClass='trend-ok';}
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><span class="insight-label">${p.label}</span></td><td>${fmtNum(Math.round(avgProy))}</td><td style="font-weight:600;color:${avgErr>0?'#dc2626':'#16a34a'}">${fmtPct(avgErr)}</td><td class="${trendClass}">${trend}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+buildInsightTable('MLB','insightMLB');
+buildInsightTable('MLM','insightMLM');
+buildInsightTable('MLC','insightMLC');
+buildInsightTable('MLA','insightMLA');
+</script>
+</body>
+</html>
