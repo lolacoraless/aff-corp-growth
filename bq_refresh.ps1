@@ -334,6 +334,7 @@ SELECT
 FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_REGISTRATION_JOURNEY` b
 WHERE page = 'landing'
   AND ds >= '${D.HIST}'
+  AND (ds < '2026-04-01' OR path = '/splinter/landing')
 GROUP BY ALL
 '@
 
