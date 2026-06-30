@@ -68,8 +68,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
   <ul>
     <li>La base activa cayó <strong class="red">31% en junio</strong> (83k → 60k afiliados). New cayó −23.5%, Recurrent −31.8% y Recovered −46.3% vs mayo, lo que se traduce en un aumento MoM de +35% de usuarios inactivos. <a href="#s-kpis" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap">Ver detalle ↓</a></li>
     <li><strong>Crecimiento de inactivos:</strong> qué se puede observar del <strong>+35% de usuarios churned en junio:</strong><ul style="list-style:none;margin-top:4px;padding-left:14px"><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> El <strong>71%</strong> son usuarios a quienes se les venció el FT de 60 días</li><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> El <strong>80%</strong> nunca alcanzó el umbral de cobro ($30K ARS acumulados)</li><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> El <strong>63%</strong> eran afiliados que hicieron su primera venta en mayo — activaron tarde dentro del FT (el período corre desde el registro, no la primera venta) o no generaron earnings suficientes para continuar en el programa</li></ul><a href="#s-churn" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap;display:inline-block;margin-top:2px">Ver detalle ↓</a></li>
-    <li><strong>Caída de new:</strong> el FT reduce el pool de potenciales new affiliates. Dos factores lo explican:<ul style="list-style:none;margin-top:4px;padding-left:14px"><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> En MLB y MLM, el <strong>33–44%</strong> de los new llevan más de 60 días registrados — reservorio que sigue activando con el tiempo. En MLA ese segmento es solo el <strong>5%</strong>: el FT vence y los bloquea antes de que puedan activar</li><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> MLA concentra el <strong>mayor share de registros vía POM entre todos los sites (~44% vs MLB ~25%, MLM ~34%, MLC ~37%)</strong> — y los usuarios captados por POM activan consistentemente menos que los de Direct (8% vs 16% de activación same-month, promedio Mar–Jun 2026)</li></ul><a href="#s-new" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap;display:inline-block;margin-top:2px">Ver detalle ↓</a></li>
-    <li><strong>Brecha earnings:</strong> el <strong>84%</strong> de los afiliados de MLA del cohort Mar-Abr 2026 no generó earnings. Del 16% que sí generó, 4 de cada 5 quedan bajo el mínimo de cobro ($30K ARS) — para comparar, el pago más bajo de monotributo es de $42.386. <a href="#s-earn" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap">Ver detalle ↓</a></li>
+    <li><strong>Caída de new:</strong> la reducción de −23% MoM la pueden explicar dos factores principales:<ul style="list-style:none;margin-top:4px;padding-left:14px"><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> En MLB y MLM, el <strong>33–44%</strong> de los new llevan más de 60 días registrados — reservorio que sigue activando con el tiempo. En MLA ese segmento es solo el <strong>5%</strong>: el FT vence y los bloquea antes de que puedan activar</li><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> MLA concentra el <strong>mayor share de registros vía POM entre todos los sites (~44% vs MLB ~25%, MLM ~34%, MLC ~37%)</strong> — y los usuarios captados por POM activan consistentemente menos que los de Direct (8% vs 16% de activación same-month, promedio Mar–Jun 2026)</li></ul><a href="#s-new" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap;display:inline-block;margin-top:2px">Ver detalle ↓</a></li>
+    <li><strong>Brecha earnings:</strong> el <strong>87%</strong> de los afiliados de MLA del cohort Mar–Jun 2026 no generó earnings. Del 13% que sí generó, 4 de cada 5 quedan bajo el mínimo de cobro ($30K ARS) — para comparar, el pago más bajo de monotributo es de $42.386. <a href="#s-earn" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap">Ver detalle ↓</a></li>
     <li>Impacto en NMV: si bien los afiliados recurrentes son responsables del 68% del NMV total de junio, los usuarios con free trial vigente aportan un sólido 26% que viene decreciendo MoM debido al crecimiento del churn. <a href="#s-nmv" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap">Ver detalle ↓</a></li>
   </ul>
 </div>
@@ -158,11 +158,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
     <canvas id="bucketChartMLC" height="115"></canvas>
   </div>
 </div>
-<div class="card" style="margin-bottom:12px">
-  <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:6px">Comparación entre sites — Jun-26 · % de new por días desde registro hasta 1ª venta</div>
-  <div style="font-size:11px;color:#888;margin-bottom:10px">Leer: "de los que vendieron por primera vez en junio, ¿cuántos días llevaban registrados?"</div>
-  <table id="bucketCompareTable" class="bench-t"></table>
-</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
   <div class="card">
     <div class="card-title">Registros por fuente y % activación same-month</div>
@@ -187,7 +182,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 </div>
 
 <div class="s-title" id="s-earn">Distribución de earnings LT — Afiliados Mar-Jun 2026</div>
-<div class="insight">El 84% de los afiliados registrados en MLA no generó earnings. Del 16% que sí generó, 4 de cada 5 están por debajo del mínimo de cobro ($30K ARS). El problema es transversal: en MLA el 81.5% de los afiliados con earnings está bajo mínimo vs 48.7% en MLB y 47.2% en MLM — MLA es el site con mayor brecha entre generar y poder cobrar.</div>
+<div class="insight">El 87% de los afiliados registrados en MLA no generó earnings (cohort Mar–Jun 2026). Del 13% que sí generó, 4 de cada 5 están por debajo del mínimo de cobro ($30K ARS). El problema es transversal: en MLA el 81.5% de los afiliados con earnings está bajo mínimo vs 48.7% en MLB y 47.2% en MLM — MLA es el site con mayor brecha entre generar y poder cobrar.</div>
 
 <div class="card">
   <div class="tab-bar">
@@ -196,14 +191,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
     <button class="tab" onclick="switchSite('MLM',this)">MLM</button>
     <button class="tab" onclick="switchSite('MLC',this)">MLC</button>
   </div>
-  <div style="display:flex;gap:20px;align-items:center">
-    <div style="flex:1">
-      <div class="kpi" style="margin-bottom:8px"><div class="kpi-l">Sin earnings</div><div class="kpi-v muted" id="hSin">431,741</div><div class="kpi-c muted" id="hSinP">84.0% de registrados</div></div>
-      <div class="kpi" style="margin-bottom:8px"><div class="kpi-l">Con earnings</div><div class="kpi-v" id="hCon">82,326</div><div class="kpi-c blue" id="hConP">16.0% de registrados</div></div>
-      <div class="kpi"><div class="kpi-l">Sobre mínimo cobro</div><div class="kpi-v blue" id="hMin">15,116</div><div class="kpi-c blue" id="hMinP">2.9% de registrados</div><div class="kpi-c blue" id="hMinE">18.4% de usuarios con earnings</div></div>
-      <div style="font-size:11px;color:#888;margin-top:10px" id="hNote">Cohort Registrados Mar-Abr 2026 · 1er bucket = bajo mínimo · Mínimo: $20,000 ARS</div>
+  <div style="display:flex;gap:16px;align-items:center">
+    <div style="flex:0 0 210px">
+      <div class="kpi" style="margin-bottom:8px"><div class="kpi-l">Sin earnings</div><div class="kpi-v muted" id="hSin">746,368</div><div class="kpi-c muted" id="hSinP">87.1% de registrados</div></div>
+      <div class="kpi" style="margin-bottom:8px"><div class="kpi-l">Con earnings</div><div class="kpi-v" id="hCon">111,157</div><div class="kpi-c blue" id="hConP">13.0% de registrados</div></div>
+      <div class="kpi"><div class="kpi-l">Sobre mínimo cobro</div><div class="kpi-v blue" id="hMin">19,479</div><div class="kpi-c blue" id="hMinP">2.3% de registrados</div><div class="kpi-c blue" id="hMinE">17.5% de usuarios con earnings</div></div>
+      <div style="font-size:11px;color:#888;margin-top:10px" id="hNote">Cohort Registrados Mar–Jun 2026 · 1er bucket = bajo mínimo · Mínimo: $30,000 ARS</div>
     </div>
-    <div style="width:700px;flex-shrink:0"><canvas id="histChart" height="90"></canvas></div>
+    <div style="flex:0 0 180px;display:flex;flex-direction:column;align-items:center">
+      <div style="font-size:11px;color:#555;font-weight:600;margin-bottom:6px">¿Generaron earnings?</div>
+      <canvas id="pieChart" width="160" height="160"></canvas>
+      <div style="display:flex;gap:10px;margin-top:8px;font-size:10px;color:#888">
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e8eaed;border:1px solid #dadce0;margin-right:3px"></span>Sin</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1a73e8;margin-right:3px"></span>Con</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;align-self:center;gap:2px">
+      <div style="font-size:10px;color:#888;white-space:nowrap">De los que sí generaron...</div>
+      <div style="font-size:22px;color:#1a73e8;line-height:1">→</div>
+    </div>
+    <div style="flex:1">
+      <div style="font-size:11px;color:#555;font-weight:600;margin-bottom:6px">Distribución de earnings acumulados</div>
+      <canvas id="histChart" height="110"></canvas>
+    </div>
   </div>
 </div>
 
@@ -513,17 +523,51 @@ funnelSteps.forEach((s,i)=>{
 });
 
 const histData={
-  MLA:{sin:431741,total:514067,note:'Mínimo: $30,000 ARS',buckets:['>$0–$30K','$30K–$50K','$50K–$100K','$100K–$500K','+$500K'],vals:[67210,7174,5180,2578,184]},
-  MLB:{sin:930722,total:1299235,note:'Mínimo: R$30',buckets:['>R$0–R$30','R$30–R$100','R$100–R$200','R$200–R$500','R$500–R$2K','+R$2K'],vals:[179598,97186,42322,33950,13725,1732]},
-  MLM:{sin:367099,total:454088,note:'Mínimo: $100 MXN',buckets:['>$0–$100','$100–$300','$300–$600','$600–$1.5K','$1.5K–$8K','+$8K'],vals:[41040,27282,11021,6040,1555,51]},
-  MLC:{sin:71554,total:87354,note:'Mínimo: $20,000 CLP',buckets:['>$0–$20K','$20K–$50K','$50K–$100K','$100K–$200K','$200K–$1M','+$1M'],vals:[14116,1254,333,69,25,3]},
+  MLA:{sin:746368,total:857525,cohort:'Mar–Jun 2026',note:'Mínimo: $30,000 ARS',buckets:['>$0–$30K','$30K–$50K','$50K–$100K','$100K–$500K','+$500K'],vals:[91678,9423,6592,3236,228]},
+  MLB:{sin:930722,total:1299235,cohort:'Mar–Abr 2026',note:'Mínimo: R$30',buckets:['>R$0–R$30','R$30–R$100','R$100–R$200','R$200–R$500','R$500–R$2K','+R$2K'],vals:[179598,97186,42322,33950,13725,1732]},
+  MLM:{sin:367099,total:454088,cohort:'Mar–Abr 2026',note:'Mínimo: $100 MXN',buckets:['>$0–$100','$100–$300','$300–$600','$600–$1.5K','$1.5K–$8K','+$8K'],vals:[41040,27282,11021,6040,1555,51]},
+  MLC:{sin:71554,total:87354,cohort:'Mar–Abr 2026',note:'Mínimo: $20,000 CLP',buckets:['>$0–$20K','$20K–$50K','$50K–$100K','$100K–$200K','$200K–$1M','+$1M'],vals:[14116,1254,333,69,25,3]},
 };
 
+let pieInst=null;
+function renderPie(s){
+  const d=histData[s];
+  const con=d.vals.reduce((a,b)=>a+b,0);
+  if(pieInst)pieInst.destroy();
+  pieInst=new Chart(document.getElementById('pieChart'),{
+    type:'doughnut',
+    data:{
+      labels:['Sin earnings','Con earnings'],
+      datasets:[{data:[d.sin,con],backgroundColor:['#e8eaed','#1a73e8'],borderColor:['#dadce0','#1565c0'],borderWidth:1}]
+    },
+    options:{
+      animation:false,
+      responsive:false,
+      plugins:{
+        legend:{display:false},
+        datalabels:{
+          display:true,
+          color:ctx=>ctx.dataIndex===0?'#666':'#fff',
+          font:{size:11,weight:'600'},
+          formatter:(v,ctx)=>{
+            const tot=ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            return (v/tot*100).toFixed(0)+'%';
+          }
+        },
+        tooltip:{callbacks:{label:c=>{
+          const tot=c.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+          return c.label+': '+fmtN(c.raw)+' ('+(c.raw/tot*100).toFixed(1)+'%)';
+        }}}
+      }
+    }
+  });
+}
 let histInst=null;
 function switchSite(s,btn){
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('act'));
   btn.classList.add('act');
   renderHist(s);
+  renderPie(s);
 }
 function renderHist(s){
   const d=histData[s];
@@ -536,7 +580,7 @@ function renderHist(s){
   document.getElementById('hMin').textContent=fmtN(sobre);
   document.getElementById('hMinP').textContent=(sobre/d.total*100).toFixed(1)+'% de registrados';
   document.getElementById('hMinE').textContent=con?(sobre/con*100).toFixed(1)+'% de usuarios con earnings':'';
-  document.getElementById('hNote').textContent='Cohort Registrados Mar-Abr 2026 · 1er bucket = bajo mínimo · '+d.note;
+  document.getElementById('hNote').textContent='Cohort Registrados '+d.cohort+' · 1er bucket = bajo mínimo · '+d.note;
   if(histInst)histInst.destroy();
   const bgColors=d.vals.map((_,i)=>i===0?'#1a73e820':'#1a73e8aa');
   const bdColors=d.vals.map((_,i)=>i===0?'#1a73e866':'#1a73e8');
@@ -587,6 +631,7 @@ function renderHist(s){
   });
 }
 renderHist('MLA');
+renderPie('MLA');
 
 // ¿Por qué no crecen los New? — Registros y activación MLA
 const regActMonths=['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'];
