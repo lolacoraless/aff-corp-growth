@@ -192,12 +192,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
     <button class="tab" onclick="switchSite('MLC',this)">MLC</button>
   </div>
   <div style="display:flex;gap:16px;align-items:center">
-    <div style="flex:0 0 210px">
-      <div class="kpi" style="margin-bottom:8px"><div class="kpi-l">Sin earnings</div><div class="kpi-v muted" id="hSin">746,368</div><div class="kpi-c muted" id="hSinP">87.1% de registrados</div></div>
-      <div class="kpi" style="margin-bottom:8px"><div class="kpi-l">Con earnings</div><div class="kpi-v" id="hCon">111,157</div><div class="kpi-c blue" id="hConP">13.0% de registrados</div></div>
-      <div class="kpi"><div class="kpi-l">Sobre mínimo cobro</div><div class="kpi-v blue" id="hMin">19,479</div><div class="kpi-c blue" id="hMinP">2.3% de registrados</div><div class="kpi-c blue" id="hMinE">17.5% de usuarios con earnings</div></div>
-      <div style="font-size:11px;color:#888;margin-top:10px" id="hNote">Cohort Registrados Mar–Jun 2026 · 1er bucket = bajo mínimo · Mínimo: $30,000 ARS</div>
-    </div>
     <div style="flex:0 0 180px;display:flex;flex-direction:column;align-items:center">
       <div style="font-size:11px;color:#555;font-weight:600;margin-bottom:6px">¿Generaron earnings?</div>
       <canvas id="pieChart" width="160" height="160"></canvas>
@@ -571,16 +565,6 @@ function switchSite(s,btn){
 }
 function renderHist(s){
   const d=histData[s];
-  const con=d.vals.reduce((a,b)=>a+b,0);
-  const sobre=d.vals.slice(1).reduce((a,b)=>a+b,0);
-  document.getElementById('hSin').textContent=fmtN(d.sin);
-  document.getElementById('hSinP').textContent=(d.sin/d.total*100).toFixed(1)+'% de registrados';
-  document.getElementById('hCon').textContent=fmtN(con);
-  document.getElementById('hConP').textContent=(con/d.total*100).toFixed(1)+'% de registrados';
-  document.getElementById('hMin').textContent=fmtN(sobre);
-  document.getElementById('hMinP').textContent=(sobre/d.total*100).toFixed(1)+'% de registrados';
-  document.getElementById('hMinE').textContent=con?(sobre/con*100).toFixed(1)+'% de usuarios con earnings':'';
-  document.getElementById('hNote').textContent='Cohort Registrados '+d.cohort+' · 1er bucket = bajo mínimo · '+d.note;
   if(histInst)histInst.destroy();
   const bgColors=d.vals.map((_,i)=>i===0?'#1a73e820':'#1a73e8aa');
   const bdColors=d.vals.map((_,i)=>i===0?'#1a73e866':'#1a73e8');
@@ -767,33 +751,6 @@ function renderBucketSite(site,canvasId){
 }
 ['MLA','MLB','MLM','MLC'].forEach(s=>renderBucketSite(s,'bucketChart'+s));
 
-(function(){
-  const sites=['MLB','MLM','MLC','MLA'];
-  let html='<thead><tr>'
-    +'<th>Site</th>'
-    +'<th style="text-align:right">0–7d</th>'
-    +'<th style="text-align:right">8–30d</th>'
-    +'<th style="text-align:right">31–60d</th>'
-    +'<th style="text-align:right">+60d</th>'
-    +'</tr></thead><tbody>';
-  sites.forEach(s=>{
-    const d=bucketData[s];
-    const i=d.months.length-1;
-    const d60p=d.d61_90[i]+d.d91p[i];
-    const tot=d.d00_07[i]+d.d08_30[i]+d.d31_60[i]+d60p;
-    const pct=v=>tot?(v/tot*100).toFixed(1)+'%':'—';
-    const isMLA=s==='MLA';
-    html+=`<tr${isMLA?' class="mla"':''}>
-      <td><strong${isMLA?' style="color:#1a73e8"':''}>${s}</strong></td>
-      <td style="text-align:right">${pct(d.d00_07[i])}</td>
-      <td style="text-align:right">${pct(d.d08_30[i])}</td>
-      <td style="text-align:right">${pct(d.d31_60[i])}</td>
-      <td style="text-align:right;font-weight:600;color:${isMLA?'#aaa':'#1d9e75'}">${pct(d60p)}</td>
-    </tr>`;
-  });
-  html+='</tbody>';
-  document.getElementById('bucketCompareTable').innerHTML=html;
-})();
 
 new Chart(document.getElementById('churnChart'),{
   type:'doughnut',
