@@ -196,8 +196,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
       <div style="font-size:11px;color:#555;font-weight:600;margin-bottom:6px">¿Generaron earnings?</div>
       <canvas id="pieChart" width="160" height="160"></canvas>
       <div style="display:flex;gap:10px;margin-top:8px;font-size:10px;color:#888">
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e8eaed;border:1px solid #dadce0;margin-right:3px"></span>Sin</span>
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1a73e8;margin-right:3px"></span>Con</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e8eaed;border:1px solid #dadce0;margin-right:3px"></span>No</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1a73e8;margin-right:3px"></span>Sí</span>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;align-items:center;align-self:center;gap:2px">
@@ -531,7 +531,7 @@ function renderPie(s){
   pieInst=new Chart(document.getElementById('pieChart'),{
     type:'doughnut',
     data:{
-      labels:['Sin earnings','Con earnings'],
+      labels:['No','Sí'],
       datasets:[{data:[d.sin,con],backgroundColor:['#e8eaed','#1a73e8'],borderColor:['#dadce0','#1565c0'],borderWidth:1}]
     },
     options:{
