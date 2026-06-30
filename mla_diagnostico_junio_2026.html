@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Afiliados MLA — Diagnóstico junio 2026</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;background:#f5f5f5;color:#1a1a1a;padding:24px}
+.dash{max-width:1100px;margin:0 auto}
+.s-title{font-size:12px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.7px;margin:28px 0 12px;display:flex;align-items:center;gap:10px}
+.s-title::after{content:'';flex:1;height:.5px;background:#ddd}
+.card{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:18px}
+.card+.card{margin-top:12px}
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}
+.kpi{background:#f9f9f9;border:1px solid #e5e5e5;border-radius:8px;padding:14px}
+.kpi-l{font-size:11px;color:#888;margin-bottom:4px}
+.kpi-v{font-size:22px;font-weight:600;color:#1a1a1a;line-height:1}
+.kpi-c{font-size:11px;margin-top:3px}
+.red{color:#d93025}
+.green{color:#1a7f5a}
+.blue{color:#1a73e8}
+.muted{color:#888}
+.tldr{border-left:3px solid #1a73e8;border-radius:0 8px 8px 0;padding:14px 18px;margin-bottom:12px;background:#f0f6ff;border:1px solid #c5d9f7;border-left:3px solid #1a73e8}
+.tldr ul{list-style:none;margin-top:6px}
+.tldr li{font-size:13px;color:#1a1a1a;padding:3px 0;padding-left:14px;position:relative}
+.tldr li::before{content:'→';position:absolute;left:0;color:#1a73e8;font-weight:600}
+.tab-bar{display:flex;gap:6px;margin-bottom:14px}
+.tab{padding:5px 14px;border-radius:6px;border:1px solid #ddd;background:transparent;color:#666;cursor:pointer;font-size:12px;font-weight:500}
+.tab.act{background:#e8f0fe;color:#1a73e8;border-color:#1a73e8}
+.bench-t{width:100%;border-collapse:collapse;font-size:12px;margin-top:12px}
+.bench-t th{padding:6px 10px;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #eee;text-align:left;font-weight:500}
+.bench-t td{padding:8px 10px;border-bottom:1px solid #eee;color:#1a1a1a}
+.bench-t tr:last-child td{border-bottom:none}
+.bench-t .mla td{background:#e8f0fe}
+.bench-t .na{color:#aaa}
+.bench-t .hi{color:#1a73e8;font-weight:600}
+.st-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.st-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.st-label{font-size:12px;color:#1a1a1a;flex:1}
+.st-n{font-size:12px;font-weight:600;color:#1a1a1a;width:70px;text-align:right}
+.st-pct{font-size:12px;width:44px;text-align:right}
+.alert-box{margin-top:12px;padding:12px 14px;background:#fff8e1;border:1px solid #f9a825;border-radius:8px;font-size:12px;color:#7a5200}
+.meta-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.funnel-row{display:flex;align-items:center;margin-bottom:5px}
+.insight{font-size:12px;color:#333;line-height:1.55;background:#f7f7f7;border-left:2px solid #c0c0c0;padding:9px 13px;margin-bottom:12px;border-radius:0 6px 6px 0}
+.card-title{font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:6px}
+.card-sub{font-size:11px;color:#888;margin-bottom:10px}
+.help-tip{position:relative;cursor:help;color:#aaa;font-weight:400;font-size:10px}
+.help-tip .help-pop{display:none;position:absolute;bottom:calc(100% + 6px);right:0;width:240px;background:#1a1a1a;color:#f5f5f5;font-size:11px;font-weight:400;line-height:1.5;padding:8px 10px;border-radius:6px;text-transform:none;letter-spacing:0;white-space:normal;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.help-tip .help-pop::after{content:'';position:absolute;top:100%;right:10px;border:5px solid transparent;border-top-color:#1a1a1a}
+.help-tip:hover .help-pop{display:block}
+</style>
+</head>
+<body>
+<div class="dash">
+
+<div style="margin-bottom:20px">
+  <div style="font-size:22px;font-weight:700;color:#1a1a1a">Afiliados MLA — Diagnóstico junio 2026</div>
+  <div style="font-size:12px;color:#888;margin-top:2px">Cohort Registrados Mar-Abr 2026 · Datos al 29 jun 2026</div>
+</div>
+
+<div class="s-title">TL;DR</div>
+
+<div class="tldr">
+  <ul>
+    <li>La base activa cayó <strong class="red">31% en junio</strong> (83k → 60k afiliados). New cayó −23.5%, Recurrent −31.8% y Recovered −46.3% vs mayo. <a href="#s-kpis" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap">Ver detalle ↓</a></li>
+    <li><strong>Crecimiento de inactivos:</strong> el churn creció <strong>+35% en junio</strong> (48k → 66k afiliados). Dos factores lo explican:<ul style="list-style:none;margin-top:4px;padding-left:14px"><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> El <strong>71%</strong> son usuarios a quienes se les venció el FT de 60 días</li><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> El <strong>80%</strong> nunca alcanzó el umbral de cobro ($30K ARS acumulados)</li></ul><a href="#s-churn" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap;display:inline-block;margin-top:2px">Ver detalle ↓</a></li>
+    <li><strong>Caída de new:</strong> el FT reduce el pool de potenciales new affiliates. Dos factores lo explican:<ul style="list-style:none;margin-top:4px;padding-left:14px"><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> En MLB y MLM, el <strong>33–44%</strong> de los new llevan más de 60 días registrados — reservorio que sigue activando con el tiempo. En MLA ese segmento es solo el <strong>5%</strong>: el FT vence y los bloquea antes de que puedan activar</li><li style="padding:2px 0;position:relative"><span style="position:absolute;left:-14px;color:#1a73e8;font-weight:600">→</span> En el pico de captación (marzo, 350k inscriptos), el <strong>44% ingresó por POM</strong> — canal que activa 8 PP menos que Direct (8% vs 16%, Mar–Jun 2026). MLA tiene el mayor share de POM entre todos los sites (MLB: ~25%, MLM: ~34%, MLC: ~37%, MLA: ~44%)</li></ul><a href="#s-new" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap;display:inline-block;margin-top:2px">Ver detalle ↓</a></li>
+    <li><strong>Brecha earnings:</strong> el <strong>87%</strong> de los afiliados de MLA no generó earnings. Del 13% que sí generó, 4 de cada 5 quedan bajo el mínimo de cobro ($30K ARS) — la brecha entre generar y poder cobrar es mayor en MLA que en cualquier otro site. <a href="#s-earn" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap">Ver detalle ↓</a></li>
+    <li>Impacto en NMV: el segmento con Free Trial activo pasó de $10B a $5.4B ARS en junio (−47%). Los afiliados recurrentes sostienen el 68% del NMV total y son casi en su totalidad usuarios sin free trial. <a href="#s-nmv" style="color:#1a73e8;font-size:11px;text-decoration:none;font-weight:500;white-space:nowrap">Ver detalle ↓</a></li>
+  </ul>
+</div>
+
+<div class="kpi-grid" id="s-kpis">
+  <div class="kpi"><div class="kpi-l">Activos jun-26</div><div class="kpi-v">60,229</div><div class="kpi-c red">↓ −27.2% vs may</div></div>
+  <div class="kpi"><div class="kpi-l">New jun-26</div><div class="kpi-v">41,104</div><div class="kpi-c red">↓ −23.5% vs may</div></div>
+  <div class="kpi"><div class="kpi-l">Recurrent jun-26</div><div class="kpi-v">16,557</div><div class="kpi-c red">↓ −31.8% vs may</div></div>
+  <div class="kpi"><div class="kpi-l">Recovered jun-26</div><div class="kpi-v">2,568</div><div class="kpi-c red">↓ −46.3% vs may</div></div>
+  <div class="kpi" style="border-color:#d93025"><div class="kpi-l">Churned jun-26</div><div class="kpi-v red">66,183</div><div class="kpi-c red">↑ +37.4% vs may</div></div>
+</div>
+
+<div class="card"><canvas id="bhChart" height="70"></canvas></div>
+
+<div class="s-title" id="s-churn">Composición del churn de junio</div>
+<div class="insight">Por estado FT: el <strong>74% tenía el trial vencido</strong> (TRIAL_PERIOD_EXCEED) al momento de caer en churn — consecuencia directa del lanzamiento masivo de marzo, con impacto que continúa en julio. Por earnings: el <strong>88% acumuló menos de $30K ARS en toda su historia</strong> — nunca llegó al umbral de cobro.</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+  <div class="card">
+    <div style="font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:3px">Por FT status</div>
+    <div style="font-size:11px;color:#888;margin-bottom:10px">Status FT al momento del churn · Total: <strong style="color:#1a1a1a">66,744</strong></div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+      <div style="width:130px;height:130px;position:relative"><canvas id="churnChart"></canvas></div>
+      <div style="width:100%">
+        <div class="st-row"><div class="st-dot" style="background:#e24b4a"></div><div class="st-label">TRIAL_PERIOD_EXCEED</div><div class="st-n">49,278</div><div class="st-pct red">73.8%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#378add"></div><div class="st-label">TRIAL_ACTIVE</div><div class="st-n">15,164</div><div class="st-pct blue">22.7%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#888"></div><div class="st-label">NO_FREE_TRIAL</div><div class="st-n">1,389</div><div class="st-pct muted">2.1%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#1d9e75"></div><div class="st-label">NORMALIZED</div><div class="st-n">661</div><div class="st-pct green">1.0%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#ba7517"></div><div class="st-label">TRIAL_AMOUNT_EXCEED</div><div class="st-n">15</div><div class="st-pct muted">~0%</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:3px">Por earnings acumulados LT</div>
+    <div style="font-size:11px;color:#888;margin-bottom:10px">Comisiones históricas antes del churn · Total: <strong style="color:#1a1a1a">66,744</strong></div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+      <div style="width:130px;height:130px;position:relative"><canvas id="churnEarnChart"></canvas></div>
+      <div style="width:100%">
+        <div class="st-row"><div class="st-dot" style="background:#e24b4a"></div><div class="st-label">Sin earnings</div><div class="st-n">26,914</div><div class="st-pct red">40.3%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#f4a840"></div><div class="st-label">$1–$30K ARS</div><div class="st-n">31,889</div><div class="st-pct" style="color:#ba7517">47.8%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#a8d5b5"></div><div class="st-label">$30K–$50K ARS</div><div class="st-n">3,826</div><div class="st-pct green">5.7%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#5cbe95"></div><div class="st-label">$50K–$100K ARS</div><div class="st-n">2,661</div><div class="st-pct green">4.0%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#1d9e75"></div><div class="st-label">$100K–$500K ARS</div><div class="st-n">1,207</div><div class="st-pct green">1.8%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#0d5e3f"></div><div class="st-label">+$500K ARS</div><div class="st-n">10</div><div class="st-pct green">~0%</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:3px">Por segmento en mayo</div>
+    <div style="font-size:11px;color:#888;margin-bottom:10px">Actividad previa al churn · Total: <strong style="color:#1a1a1a">66,744</strong></div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+      <div style="width:130px;height:130px;position:relative"><canvas id="churnSegChart"></canvas></div>
+      <div style="width:100%">
+        <div class="st-row"><div class="st-dot" style="background:#1a1a2e"></div><div class="st-label">New</div><div class="st-n">41,838</div><div class="st-pct muted">62.7%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#555577"></div><div class="st-label">Recurrent</div><div class="st-n">20,691</div><div class="st-pct muted">31.0%</div></div>
+        <div class="st-row"><div class="st-dot" style="background:#9999bb"></div><div class="st-label">Recovered</div><div class="st-n">4,215</div><div class="st-pct muted">6.3%</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ¿Por qué no crecen los New? -->
+<div class="s-title" id="s-new" style="margin-top:24px">¿Por qué no crecen los New? — Registros y activación</div>
+<div class="insight">Dos frenos estructurales explican el techo de crecimiento. <strong>Primero, el FT limita el pool:</strong> en MLB y MLM, el 33–44% de los afiliados que activaron en junio llevaban más de 60 días registrados — son un reservorio que sigue activando con el tiempo. En MLA ese segmento es solo el <strong>5%</strong> porque el trial vence a los 60 días y los bloquea antes de que puedan activar. <strong>Segundo,</strong> MLA concentra el mayor share de POM entre todos los sites (MLA: ~44%, MLC: ~37%, MLM: ~34%, MLB: ~25%) y los usuarios registrados vía POM tienen peor activación que los de Direct: en MLA activaron 8 PP menos en promedio Mar–Jun 2026 (8% POM vs 16% Direct).</div>
+<div style="margin-bottom:4px">
+  <div class="card-title" style="margin-bottom:2px">New de cada mes — % por días desde registro hasta 1ª venta</div>
+  <div style="font-size:11px;color:#888">De los afiliados con 1ª venta en el mes · ¿cuántos días llevaban registrados?</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+  <div class="card" style="border:2px solid #1a73e8">
+    <div style="font-size:12px;font-weight:700;color:#1a73e8;margin-bottom:6px">MLA</div>
+    <canvas id="bucketChartMLA" height="115"></canvas>
+  </div>
+  <div class="card">
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px">MLB</div>
+    <canvas id="bucketChartMLB" height="115"></canvas>
+  </div>
+  <div class="card">
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px">MLM</div>
+    <canvas id="bucketChartMLM" height="115"></canvas>
+  </div>
+  <div class="card">
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px">MLC</div>
+    <canvas id="bucketChartMLC" height="115"></canvas>
+  </div>
+</div>
+<div class="card" style="margin-bottom:12px">
+  <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:6px">Comparación entre sites — Jun-26 · % de new por días desde registro hasta 1ª venta</div>
+  <div style="font-size:11px;color:#888;margin-bottom:10px">Leer: "de los que vendieron por primera vez en junio, ¿cuántos días llevaban registrados?"</div>
+  <table id="bucketCompareTable" class="bench-t"></table>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+  <div class="card">
+    <div class="card-title">Registros por fuente y % activación same-month</div>
+    <canvas id="regActChart" height="160"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title">% de registrados que generaron su primera venta en el mismo mes</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="border-bottom:2px solid #e8e8e8">
+          <th style="text-align:left;padding:6px 8px;color:#888;font-weight:500">Mes</th>
+          <th style="text-align:center;padding:6px 8px;color:#888;font-weight:400;font-size:10px">Regs POM</th>
+          <th style="text-align:right;padding:6px 8px;color:#1a73e8;font-weight:600">POM %</th>
+          <th style="text-align:center;padding:6px 8px;color:#888;font-weight:400;font-size:10px">Regs Direct</th>
+          <th style="text-align:right;padding:6px 8px;color:#e24b4a;font-weight:600">Direct %</th>
+          <th style="text-align:right;padding:6px 8px;color:#555;font-weight:500">Total %</th>
+        </tr>
+      </thead>
+      <tbody id="actTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="s-title" id="s-earn">Distribución de earnings LT — Afiliados Mar-Jun 2026</div>
+<div class="insight">El 87% de los afiliados registrados en MLA no generó earnings. Del 13% que sí generó, 4 de cada 5 están por debajo del mínimo de cobro ($30K ARS). El problema es transversal: en MLA el 81.5% de los afiliados con earnings está bajo mínimo vs 48.7% en MLB y 47.2% en MLM — MLA es el site con mayor brecha entre generar y poder cobrar.</div>
+
+<div class="card">
+  <div class="tab-bar">
+    <button class="tab act" onclick="switchSite('MLA',this)">MLA</button>
+    <button class="tab" onclick="switchSite('MLB',this)">MLB</button>
+    <button class="tab" onclick="switchSite('MLM',this)">MLM</button>
+    <button class="tab" onclick="switchSite('MLC',this)">MLC</button>
+  </div>
+  <div style="display:flex;gap:20px;align-items:center">
+    <div style="flex:1">
+      <div class="kpi" style="margin-bottom:8px"><div class="kpi-l">Sin earnings</div><div class="kpi-v muted" id="hSin">748,483</div><div class="kpi-c muted" id="hSinP">86.8% de registrados</div></div>
+      <div class="kpi" style="margin-bottom:8px"><div class="kpi-l">Con earnings</div><div class="kpi-v" id="hCon">83,598</div><div class="kpi-c blue" id="hConP">16.1% de registrados</div></div>
+      <div class="kpi"><div class="kpi-l">Sobre mínimo cobro</div><div class="kpi-v blue" id="hMin">15,457</div><div class="kpi-c blue" id="hMinP">3.0% de registrados</div><div class="kpi-c blue" id="hMinE">18.5% de usuarios con earnings</div></div>
+      <div style="font-size:11px;color:#888;margin-top:10px" id="hNote">Cohort Registrados Mar-Abr 2026 · 1er bucket = bajo mínimo · Mínimo: $20,000 ARS</div>
+    </div>
+    <div style="width:700px;flex-shrink:0"><canvas id="histChart" height="90"></canvas></div>
+  </div>
+</div>
+
+<div class="s-title" id="s-nmv">NMV LC por segmento y por estado Free Trial</div>
+<div class="insight">Los afiliados recurrentes concentran el 68% del NMV de MLA (jun-26). El NMV del segmento con Free Trial activo cayó 47% entre mayo y junio ($10B → $5.4B ARS) conforme vencen los trials del cohort de marzo. En junio, la mayor parte del NMV proviene de usuarios Sin Free Trial — afiliados que se registraron ya siendo monotributistas y no requirieron período de prueba.</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  <div class="card">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:3px">Por segmento</div>
+        <div style="font-size:11px;color:#888;margin-bottom:2px">New · Recurrent · Recovered · Churn</div>
+        <div style="font-size:11px;color:#aaa">Ene–Jun 2026 · Segmento al mes de la venta</div>
+      </div>
+      <div class="tab-bar" style="margin-bottom:0;flex-shrink:0">
+        <button class="tab act" onclick="switchNmvSite('MLA',this)">MLA</button>
+        <button class="tab" onclick="switchNmvSite('MLB',this)">MLB</button>
+        <button class="tab" onclick="switchNmvSite('MLM',this)">MLM</button>
+        <button class="tab" onclick="switchNmvSite('MLC',this)">MLC</button>
+      </div>
+    </div>
+    <canvas id="nmvSegChart" height="160"></canvas>
+  </div>
+  <div class="card">
+    <div style="font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:4px">Por estado Free Trial</div>
+    <div style="font-size:11px;color:#888;margin-bottom:4px">Sin FT · Trial activo · Normalizado</div>
+    <div style="font-size:11px;color:#aaa;margin-bottom:10px">Ene–Jun 2026 · Estado FT al momento de la venta · Solo MLA</div>
+    <canvas id="nmvFtChart" height="160"></canvas>
+  </div>
+</div>
+
+<div class="s-title" id="s-funnel">Funnel de conversión — Cohort Registrados Mar-Abr 2026</div>
+<div class="insight">De los registrados en el Cohort Mar-Abr, MLA tiene la menor proporción con al menos una venta entre los sites (27%, vs 29–41% en otros sites). El cuello de botella no es generar ventas sino habilitar el cobro: solo el 0.5% de los registrados completó el proceso de monotributo. MLB y MLC no tienen esta fricción — cualquier afiliado que alcanza el mínimo local cobra directamente, sin trámites. MLM también requiere habilitación fiscal, pero su tasa de finalización es incluso menor que la de MLA (0.1% vs 0.5%).</div>
+
+<div class="card">
+  <div id="funnelViz"></div>
+  <div style="margin-top:16px;padding-top:16px;border-top:1px solid #eee">
+    <div style="font-size:11px;color:#888;margin-bottom:8px">Benchmark cross-country — mismo cohort Mar-Abr 2026 (% sobre registrados)</div>
+    <table class="bench-t">
+      <thead><tr>
+        <th>Site</th><th>Registrados</th><th>Venta TD7D</th><th>Earnings LC</th><th>Entró facturador</th><th>Inició</th><th>Terminó</th><th>Recibió pago <span class="help-tip">(?)<span class="help-pop">El % con earnings sobre mínimo puede ser mayor: afiliados que cruzaron el umbral recientemente aún están en el ciclo de liquidación (~30–45 días de delay).</span></span></th>
+      </tr></thead>
+      <tbody>
+        <tr><td><strong>MLB</strong></td><td>1,267,721</td><td>41.3%</td><td>28.3%</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td>8.5%</td></tr>
+        <tr><td><strong>MLM</strong></td><td>437,743</td><td>31.3%</td><td>19.3%</td><td>0.4%</td><td>0.3%</td><td>0.1%</td><td>0.1%</td></tr>
+        <tr><td><strong>MLC</strong></td><td>85,887</td><td>29.5%</td><td>18.1%</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td>0.5%</td></tr>
+        <tr class="mla"><td><strong class="blue">MLA</strong></td><td>514,108</td><td>27.6%</td><td>16.0%</td><td>2.0%</td><td>1.8%</td><td>0.5%</td><td>0.1%</td></tr>
+      </tbody>
+    </table>
+    <div style="font-size:11px;color:#aaa;margin-top:8px">* MLB y MLC: flujo de cobro distinto, columnas de facturador no aplican.</div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const fmt=n=>n>=1e12?(n/1e12).toFixed(1)+'T':n>=1e9?(n/1e9).toFixed(1)+'B':n>=1e6?(n/1e6).toFixed(1)+'M':n>=1000?(n/1000).toFixed(0)+'k':String(n);
+const fmtN=n=>n.toLocaleString('es-AR');
+
+Chart.register(ChartDataLabels);
+Chart.defaults.font.family='-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+Chart.defaults.font.size=11;
+
+// NMV by segment chart — multi-site
+const nmvAllData = {
+  MLA:{
+    currency:'ARS',
+    months:['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'],
+    New:     [1464321293,846542924,5200737738,4578789649,4866226045,2689164875],
+    Recurrent:[9757057727,8677690821,10930832259,12474829431,23105728922,17789846073],
+    Recovered:[0,8539582,6889074,23743823,464466163,174864744],
+    Churn:   [0,20885064,62393486,2289983373,3238521755,5358462134],
+  },
+  MLB:{
+    currency:'BRL',
+    months:['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'],
+    New:     [100942233,99719603,127822620,103753986,115082566,80590450],
+    Recurrent:[843020602,777452381,1056647632,1085420141,1319369095,1135501448],
+    Recovered:[0,13836196,26821876,33269953,57364538,49744784],
+    Churn:   [0,47614567,57895467,97782980,90489523,125838405],
+  },
+  MLM:{
+    currency:'MXN',
+    months:['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'],
+    New:     [60147360,62321610,64775244,71614970,106197628,70355741],
+    Recurrent:[253969780,216572556,243890762,319786184,551069616,394411600],
+    Recovered:[0,5834168,12020535,15954673,30734111,23505534],
+    Churn:   [0,39497269,51939786,66233262,72362142,110059789],
+  },
+  MLC:{
+    currency:'CLP',
+    months:['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'],
+    New:     [365274837,491123365,691511362,615541006,638019807,675824988],
+    Recurrent:[1565881137,1969188052,3034775411,2776551180,2755391878,5136357625],
+    Recovered:[0,47577937,189989493,155246455,251924630,375046599],
+    Churn:   [0,217435880,318925700,554984393,624807556,665359456],
+  },
+};
+
+let nmvInst=null;
+function switchNmvSite(site,btn){
+  document.querySelectorAll('.tab-bar').forEach((tb,idx)=>{if(idx===1)tb.querySelectorAll('.tab').forEach(b=>b.classList.remove('act'))});
+  // target only the NMV tab bar buttons
+  btn.parentElement.querySelectorAll('.tab').forEach(b=>b.classList.remove('act'));
+  btn.classList.add('act');
+  renderNmv(site);
+}
+function renderNmv(site){
+  const d=nmvAllData[site];
+  const totals=d.months.map((_,i)=>d.New[i]+d.Recurrent[i]+d.Recovered[i]+d.Churn[i]);
+  const pctArr=(arr)=>arr.map((v,i)=>totals[i]?v/totals[i]*100:0);
+  if(nmvInst)nmvInst.destroy();
+  nmvInst=new Chart(document.getElementById('nmvSegChart'),{
+    type:'bar',
+    data:{
+      labels:d.months,
+      datasets:[
+        {label:'New',data:pctArr(d.New),backgroundColor:'#1a1a2e',borderRadius:2,stack:'s'},
+        {label:'Recurrent',data:pctArr(d.Recurrent),backgroundColor:'#555577',borderRadius:2,stack:'s'},
+        {label:'Recovered',data:pctArr(d.Recovered),backgroundColor:'#9999bb',borderRadius:2,stack:'s'},
+        {label:'Churn',data:pctArr(d.Churn),backgroundColor:'#e24b4a',borderRadius:2,stack:'s'},
+      ]
+    },
+    options:{
+      animation:false,
+      responsive:true,
+      scales:{
+        x:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#888'},stacked:true},
+        y:{grid:{color:'rgba(0,0,0,0.04)'},stacked:true,min:0,max:100,ticks:{color:'#888',callback:v=>v+'%'}}
+      },
+      plugins:{
+        legend:{position:'top',labels:{boxWidth:12,padding:14,color:'#555'}},
+        datalabels:{
+          display:ctx=>ctx.dataset.data[ctx.dataIndex]>=3,
+          color:'#fff',font:{size:10,weight:'600'},
+          formatter:v=>v.toFixed(1)+'%',
+          anchor:'center',align:'center',clamp:true,
+        },
+        tooltip:{callbacks:{
+          title:items=>{
+            const i=items[0].dataIndex;
+            return items[0].label+' · NMV total: '+fmt(totals[i])+' '+d.currency;
+          },
+          label:c=>{
+            const i=c.dataIndex;
+            const seg=c.dataset.label;
+            const raw=d[seg][i];
+            const note=seg==='Churn'?' (NMV generado el mes anterior)':'';
+            return seg+': '+c.parsed.y.toFixed(1)+'% ('+fmt(raw)+' '+d.currency+')'+note;
+          }
+        }}
+      }
+    }
+  });
+}
+renderNmv('MLA');
+
+// NMV por FT status al momento de la venta — MLA only
+const nmvFtData = {
+  months:['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'],
+  NO_FREE_TRIAL:[11221379021, 9381422723,  11206351349, 9614594671,  17278180713, 13939695896],
+  TRIAL_ACTIVE: [0,           151350603,   4932107723,  7401038784,  10260784183, 5444038066],
+  NORMALIZED:   [0,           0,           0,           61729448,    897455335,   1270116445],
+};
+(function(){
+  const d=nmvFtData;
+  const segs=['NO_FREE_TRIAL','TRIAL_ACTIVE','NORMALIZED'];
+  const colors={'NO_FREE_TRIAL':'#4a4a6a','TRIAL_ACTIVE':'#1a73e8','NORMALIZED':'#1d9e75'};
+  const labels={'NO_FREE_TRIAL':'Sin FT','TRIAL_ACTIVE':'Trial activo (al momento de la venta)','NORMALIZED':'Normalizado'};
+  const totals=d.months.map((_,i)=>segs.reduce((s,k)=>s+d[k][i],0));
+  new Chart(document.getElementById('nmvFtChart'),{
+    type:'bar',
+    data:{
+      labels:d.months,
+      datasets:segs.map(k=>({
+        label:labels[k],
+        data:d[k].map((v,i)=>totals[i]?v/totals[i]*100:0),
+        backgroundColor:colors[k],
+        borderRadius:2,
+        stack:'s',
+        _raw:d[k],
+      }))
+    },
+    options:{
+      animation:false,responsive:true,
+      scales:{
+        x:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#888'},stacked:true},
+        y:{grid:{color:'rgba(0,0,0,0.04)'},stacked:true,min:0,max:100,ticks:{color:'#888',callback:v=>v+'%'}}
+      },
+      plugins:{
+        legend:{position:'top',labels:{boxWidth:12,padding:12,color:'#555',font:{size:11}}},
+        datalabels:{
+          display:ctx=>ctx.dataset.data[ctx.dataIndex]>=4,
+          color:'#fff',font:{size:10,weight:'600'},
+          formatter:v=>v.toFixed(1)+'%',
+          anchor:'center',align:'center',clamp:true,
+        },
+        tooltip:{callbacks:{
+          title:items=>{
+            const i=items[0].dataIndex;
+            return items[0].label+' · NMV total: '+fmt(totals[i])+' ARS';
+          },
+          label:c=>{
+            const i=c.dataIndex;
+            const raw=c.dataset._raw[i];
+            return c.dataset.label+': '+c.parsed.y.toFixed(1)+'% ('+fmt(raw)+' ARS)';
+          }
+        }}
+      }
+    }
+  });
+})();
+
+const bhLabels=['Ago-25','Sep-25','Oct-25','Nov-25','Dic-25','Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'];
+const bhNew=    [96,33,142,307,239,344,2043,55932,52675,53695,41104];
+const bhRecurrent=[0,38,37,126,273,354,536,1765,19549,24260,16557];
+const bhRecovered=[0,0,7,10,14,46,77,113,197,4785,2568];
+const bhChurned= [0,58,34,60,170,172,208,891,38261,48161,66183];
+
+new Chart(document.getElementById('bhChart'),{
+  type:'bar',
+  data:{
+    labels:bhLabels,
+    datasets:[
+      {label:'New',data:bhNew,backgroundColor:'#1a1a2e',stack:'s',borderRadius:2},
+      {label:'Recurrentes',data:bhRecurrent,backgroundColor:'#555577',stack:'s',borderRadius:2},
+      {label:'Recuperados',data:bhRecovered,backgroundColor:'#9999bb',stack:'s',borderRadius:2},
+      {label:'Inactivos',data:bhChurned.map(v=>-v),backgroundColor:'#e24b4a',stack:'s',borderRadius:2},
+    ]
+  },
+  options:{
+    animation:false,
+    responsive:true,
+    interaction:{mode:'index',intersect:false},
+    scales:{
+      x:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#888'},stacked:true},
+      y:{grid:{color:'rgba(0,0,0,0.04)'},stacked:true,ticks:{color:'#888',callback:v=>{
+        const abs=Math.abs(v);
+        return (v<0?'-':'')+fmt(abs);
+      }}}
+    },
+    plugins:{
+      legend:{position:'top',labels:{boxWidth:12,padding:14,color:'#555'}},
+      tooltip:{callbacks:{label:c=>{
+        const v=Math.abs(c.raw);
+        const i=c.dataIndex;
+        const prev=i>0?Math.abs(c.dataset.data[i-1]):null;
+        let mom='';
+        if(prev!=null&&prev>0){
+          const chg=((v-prev)/prev*100);
+          mom=' ('+(chg>=0?'+':'')+chg.toFixed(0)+'% MoM)';
+        }
+        return c.dataset.label+': '+fmtN(v)+mom;
+      }}},
+      datalabels:{
+        display:ctx=>{
+          const v=ctx.dataset.data[ctx.dataIndex];
+          return Math.abs(v)>=1000;
+        },
+        color:'#fff',
+        font:{size:10,weight:'600'},
+        formatter:(v)=>fmt(Math.abs(v)),
+        anchor:'center',
+        align:'center',
+        clamp:true,
+      }
+    }
+  }
+});
+
+const funnelSteps=[
+  {label:'Registrado',n:862683},
+  {label:'Generó venta TD7D',n:200443},
+  {label:'Generó earnings LC',n:114344},
+  {label:'Entró al facturador',n:15767},
+  {label:'Inició el proceso',n:14116},
+  {label:'Terminó el facturador',n:4130},
+  {label:'Recibió pago',n:1044},
+];
+const colors=['#1a73e8','#1a73e8','#1d9e75','#1d9e75','#ba7517','#ba7517','#d93025','#533AB7'];
+const max=funnelSteps[0].n;
+const container=document.getElementById('funnelViz');
+funnelSteps.forEach((s,i)=>{
+  const pctReg=(s.n/max*100).toFixed(1);
+  const pctPrev=i===0?null:(s.n/funnelSteps[i-1].n*100).toFixed(1);
+  const w=Math.round(5+90*Math.pow(s.n/max,0.6));
+  const c=colors[i];
+  const dropColor=pctPrev&&parseFloat(pctPrev)<40?'#d93025':pctPrev&&parseFloat(pctPrev)<75?'#ba7517':'#1a7f5a';
+  const row=document.createElement('div');
+  row.className='funnel-row';
+  row.innerHTML=`
+    <div style="width:190px;text-align:right;padding-right:10px;font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.label}</div>
+    <div style="flex:1;display:flex;align-items:center;gap:8px">
+      <div style="width:${w}%;background:${c}18;border:1px solid ${c}66;border-radius:6px;padding:7px 12px;display:flex;align-items:center;min-width:0;overflow:hidden">
+        <span style="font-size:13px;font-weight:600;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${fmtN(s.n)}</span>
+      </div>
+      <span style="font-size:11px;color:${c};font-weight:600;white-space:nowrap">${pctReg}%</span>
+    </div>
+    <div style="width:110px;padding-left:6px;font-size:11px;color:${dropColor};white-space:nowrap">${pctPrev?pctPrev+'% vs ant.':''}</div>`;
+  container.appendChild(row);
+  if(i<funnelSteps.length-1){
+    const arrow=document.createElement('div');
+    arrow.style.cssText='display:flex;align-items:center;margin-bottom:1px;padding-left:190px';
+    arrow.innerHTML=`<div style="width:18px;display:flex;flex-direction:column;align-items:center;gap:0;opacity:0.35"><div style="width:1px;height:5px;background:#999"></div><div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #999"></div></div>`;
+    container.appendChild(arrow);
+  }
+});
+
+const histData={
+  MLA:{sin:748483,total:862683,note:'Mínimo: $30,000 ARS',buckets:['>$0–$30K','$30K–$50K','$50K–$100K','$100K–$500K','+$500K'],vals:[93712,9735,6890,3514,349]},
+  MLB:{sin:930722,total:1299235,note:'Mínimo: R$30',buckets:['>R$0–R$30','R$30–R$100','R$100–R$200','R$200–R$500','R$500–R$2K','+R$2K'],vals:[179598,97186,42322,33950,13725,1732]},
+  MLM:{sin:367099,total:454088,note:'Mínimo: $100 MXN',buckets:['>$0–$100','$100–$300','$300–$600','$600–$1.5K','$1.5K–$8K','+$8K'],vals:[41040,27282,11021,6040,1555,51]},
+  MLC:{sin:71554,total:87354,note:'Mínimo: $20,000 CLP',buckets:['>$0–$20K','$20K–$50K','$50K–$100K','$100K–$200K','$200K–$1M','+$1M'],vals:[14116,1254,333,69,25,3]},
+};
+
+let histInst=null;
+function switchSite(s,btn){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('act'));
+  btn.classList.add('act');
+  renderHist(s);
+}
+function renderHist(s){
+  const d=histData[s];
+  const con=d.vals.reduce((a,b)=>a+b,0);
+  const sobre=d.vals.slice(1).reduce((a,b)=>a+b,0);
+  document.getElementById('hSin').textContent=fmtN(d.sin);
+  document.getElementById('hSinP').textContent=(d.sin/d.total*100).toFixed(1)+'% de registrados';
+  document.getElementById('hCon').textContent=fmtN(con);
+  document.getElementById('hConP').textContent=(con/d.total*100).toFixed(1)+'% de registrados';
+  document.getElementById('hMin').textContent=fmtN(sobre);
+  document.getElementById('hMinP').textContent=(sobre/d.total*100).toFixed(1)+'% de registrados';
+  document.getElementById('hMinE').textContent=con?(sobre/con*100).toFixed(1)+'% de usuarios con earnings':'';
+  document.getElementById('hNote').textContent='Cohort Registrados Mar-Abr 2026 · 1er bucket = bajo mínimo · '+d.note;
+  if(histInst)histInst.destroy();
+  const bgColors=d.vals.map((_,i)=>i===0?'#1a73e820':'#1a73e8aa');
+  const bdColors=d.vals.map((_,i)=>i===0?'#1a73e866':'#1a73e8');
+  histInst=new Chart(document.getElementById('histChart'),{
+    type:'bar',
+    data:{
+      labels:d.buckets,
+      datasets:[{label:'Afiliados',data:d.vals,backgroundColor:bgColors,borderColor:bdColors,borderWidth:1,borderRadius:4}]
+    },
+    options:{
+      animation:false,
+      responsive:true,
+      scales:{
+        x:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{color:'#888'}},
+        y:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{color:'#888',callback:v=>fmt(v)}}
+      },
+      plugins:{
+        legend:{display:false},
+        datalabels:{
+          display:ctx=>ctx.dataset.data[ctx.dataIndex]>=100,
+          anchor:ctx=>{
+            const vals=ctx.chart.data.datasets[0].data;
+            const max=Math.max(...vals);
+            return vals[ctx.dataIndex]===max?'center':'end';
+          },
+          align:ctx=>{
+            const vals=ctx.chart.data.datasets[0].data;
+            const max=Math.max(...vals);
+            return vals[ctx.dataIndex]===max?'center':'end';
+          },
+          color:ctx=>{
+            const vals=ctx.chart.data.datasets[0].data;
+            const max=Math.max(...vals);
+            return vals[ctx.dataIndex]===max?'#444':'#555';
+          },
+          font:{size:10,weight:'500'},
+          formatter:(v,ctx)=>{
+            const total=ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            return (v/total*100).toFixed(1)+'%';
+          }
+        },
+        tooltip:{callbacks:{label:c=>{
+          const total=c.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+          return 'Afiliados: '+fmtN(c.raw)+' ('+(c.raw/total*100).toFixed(1)+'% con earnings)';
+        }}}
+      }
+    }
+  });
+}
+renderHist('MLA');
+
+// ¿Por qué no crecen los New? — Registros y activación MLA
+const regActMonths=['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'];
+const pomRegs=[271,10579,156198,66324,86419,71412];
+const dirRegs=[344,18439,199401,106080,91601,88908];
+const pomPct=[20.3,4.3,9.6,7.9,8.0,6.8];
+const dirPct=[43.6,7.1,17.8,13.6,14.9,14.2];
+const totPct=[33.2,6.1,14.2,11.5,11.6,11.0];
+const pomShare=[44.1,36.5,43.9,38.5,48.5,44.5];
+const pomShareMLB=[24.0,30.0,28.9,20.8,25.0,20.9];
+const pomShareMLM=[35.1,33.0,31.0,33.2,34.5,37.1];
+const pomShareMLC=[37.1,34.8,31.5,34.5,39.3,46.6];
+
+(function(){
+  const tbody=document.getElementById('actTableBody');
+  regActMonths.forEach((m,i)=>{
+    const tr=document.createElement('tr');
+    tr.style.borderBottom='1px solid #f2f2f2';
+    const pc=p=>p>=20?'#1d9e75':p>=10?'#ba7517':'#e24b4a';
+    tr.innerHTML=`<td style="padding:5px 8px;color:#555">${m}</td><td style="padding:5px 8px;text-align:center;color:#888;font-size:11px">${fmtN(pomRegs[i])}</td><td style="padding:5px 8px;text-align:right;font-weight:600;color:${pc(pomPct[i])}">${pomPct[i].toFixed(1)}%</td><td style="padding:5px 8px;text-align:center;color:#888;font-size:11px">${fmtN(dirRegs[i])}</td><td style="padding:5px 8px;text-align:right;font-weight:600;color:${pc(dirPct[i])}">${dirPct[i].toFixed(1)}%</td><td style="padding:5px 8px;text-align:right;color:#555">${totPct[i].toFixed(1)}%</td>`;
+    tbody.appendChild(tr);
+  });
+})();
+
+(function(){
+  new Chart(document.getElementById('regActChart'),{
+    type:'bar',
+    data:{
+      labels:regActMonths,
+      datasets:[
+        {label:'POM registros',data:pomRegs,backgroundColor:'#1a73e855',borderColor:'#1a73e8',borderWidth:1,stack:'s',borderRadius:2,yAxisID:'y',datalabels:{display:false}},
+        {label:'Direct registros',data:dirRegs,backgroundColor:'#e24b4a40',borderColor:'#e24b4a',borderWidth:1,stack:'s',borderRadius:2,yAxisID:'y',datalabels:{display:false}},
+        {label:'% POM MLA',data:pomShare,type:'line',borderColor:'#38bdf8',backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,yAxisID:'y2',tension:0.3,datalabels:{display:false}},
+        {label:'% POM MLB',data:pomShareMLB,type:'line',borderColor:'#1d9e75',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,borderDash:[4,3],yAxisID:'y2',tension:0.3,datalabels:{display:false}},
+        {label:'% POM MLM',data:pomShareMLM,type:'line',borderColor:'#e24b4a',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,borderDash:[4,3],yAxisID:'y2',tension:0.3,datalabels:{display:false}},
+        {label:'% POM MLC',data:pomShareMLC,type:'line',borderColor:'#1a73e8',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,borderDash:[4,3],yAxisID:'y2',tension:0.3,datalabels:{display:false}},
+      ]
+    },
+    options:{
+      animation:false,responsive:true,
+      interaction:{mode:'index',intersect:false},
+      scales:{
+        x:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#888'},stacked:true},
+        y:{grid:{color:'rgba(0,0,0,0.04)'},stacked:true,ticks:{color:'#888',callback:v=>fmt(v)},title:{display:true,text:'Registros',color:'#aaa',font:{size:10}}},
+        y2:{position:'right',grid:{drawOnChartArea:false},min:0,max:60,ticks:{color:'#888',callback:v=>v+'%'},title:{display:true,text:'% activación',color:'#aaa',font:{size:10}}},
+      },
+      plugins:{
+        legend:{position:'top',labels:{boxWidth:12,padding:10,color:'#555',font:{size:10}}},
+        datalabels:{display:false},
+        tooltip:{callbacks:{
+          title:items=>{
+            const i=items[0].dataIndex;
+            const total=pomRegs[i]+dirRegs[i];
+            return regActMonths[i]+' · Total regs: '+fmtN(total);
+          },
+          label:c=>{
+            if(['% act. POM','% act. Direct'].includes(c.dataset.label))return null;
+            if(c.dataset.label.startsWith('% POM'))return c.dataset.label+': '+c.parsed.y.toFixed(1)+'%';
+            return c.dataset.label+': '+fmtN(c.raw);
+          }
+        }}
+      }
+    }
+  });
+})();
+
+// Bucket chart — días desde registro hasta 1ª venta (New por mes de activación)
+const bucketData={
+  MLA:{months:['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'],
+    d00_07:[169,678,34076,15248,16704,14755],
+    d08_30:[37,180,17261,22254,14165,15108],
+    d31_60:[0,24,197,15738,20212,9758],
+    d61_90:[0,0,18,69,3215,1498],
+    d91p:[0,0,0,16,66,374]},
+  MLB:{months:['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'],
+    d00_07:[88128,126706,132767,109803,117922,93736],
+    d08_30:[47765,63610,81821,65950,60935,53483],
+    d31_60:[78815,28584,47131,49812,45809,33542],
+    d61_90:[66353,44595,20959,30561,37329,27335],
+    d91p:[228390,148268,141999,112841,125086,113180]},
+  MLM:{months:['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'],
+    d00_07:[10618,20236,21370,19013,25961,22861],
+    d08_30:[11658,14388,23295,19186,22716,20461],
+    d31_60:[16306,10707,13579,18087,17269,14211],
+    d61_90:[15454,13751,8481,10521,15265,10230],
+    d91p:[23222,21987,21737,17117,21102,18535]},
+  MLC:{months:['Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26'],
+    d00_07:[2012,3941,5216,3921,4428,4522],
+    d08_30:[2056,2080,4197,3159,3010,3119],
+    d31_60:[2082,1920,2174,2944,2626,2342],
+    d61_90:[1660,1733,1657,1396,2203,2066],
+    d91p:[3909,4537,5413,5151,5553,6948]},
+};
+function renderBucketSite(site,canvasId){
+  const d=bucketData[site];
+  const d60p=d.months.map((_,i)=>d.d61_90[i]+d.d91p[i]);
+  const rawKeys=['d00_07','d08_30','d31_60'];
+  const allRaws=[...rawKeys.map(k=>d[k]),d60p];
+  const lbls=['0–7d','8–30d','31–60d','+60d'];
+  const colors=['#1d9e75','#5cbe95','#f4a840','#e24b4a'];
+  const totals=d.months.map((_,i)=>allRaws.reduce((s,r)=>s+r[i],0));
+  const datasets=allRaws.map((raw,ki)=>({
+    label:lbls[ki],
+    data:raw.map((v,i)=>totals[i]?+(v/totals[i]*100).toFixed(2):0),
+    backgroundColor:colors[ki],stack:'s',borderRadius:2,
+    _raw:raw,_tot:totals,
+  }));
+  const showLegend = canvasId==='bucketChartMLA';
+  new Chart(document.getElementById(canvasId),{
+    type:'bar',
+    data:{labels:d.months,datasets},
+    options:{
+      animation:false,responsive:true,
+      scales:{
+        x:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#888',font:{size:10}},stacked:true},
+        y:{grid:{color:'rgba(0,0,0,0.04)'},stacked:true,min:0,max:100,ticks:{color:'#888',callback:v=>v+'%',font:{size:10}}},
+      },
+      plugins:{
+        legend:{display:showLegend,position:'top',labels:{boxWidth:10,padding:8,color:'#555',font:{size:10}}},
+        datalabels:{
+          display:ctx=>ctx.dataset.data[ctx.dataIndex]>=8,
+          color:'#fff',font:{size:9,weight:'600'},
+          formatter:v=>v.toFixed(0)+'%',
+          anchor:'center',align:'center',clamp:true,
+        },
+        tooltip:{callbacks:{
+          title:items=>{const i=items[0].dataIndex;return site+' '+items[0].label+' · New total: '+fmtN(items[0].dataset._tot[i]);},
+          label:c=>{const i=c.dataIndex;return c.dataset.label+': '+fmtN(c.dataset._raw[i])+' ('+c.parsed.y.toFixed(1)+'%)';}
+        }}
+      }
+    }
+  });
+}
+['MLA','MLB','MLM','MLC'].forEach(s=>renderBucketSite(s,'bucketChart'+s));
+
+(function(){
+  const sites=['MLB','MLM','MLC','MLA'];
+  let html='<thead><tr>'
+    +'<th>Site</th>'
+    +'<th style="text-align:right">0–7d</th>'
+    +'<th style="text-align:right">8–30d</th>'
+    +'<th style="text-align:right">31–60d</th>'
+    +'<th style="text-align:right">+60d</th>'
+    +'</tr></thead><tbody>';
+  sites.forEach(s=>{
+    const d=bucketData[s];
+    const i=d.months.length-1;
+    const d60p=d.d61_90[i]+d.d91p[i];
+    const tot=d.d00_07[i]+d.d08_30[i]+d.d31_60[i]+d60p;
+    const pct=v=>tot?(v/tot*100).toFixed(1)+'%':'—';
+    const isMLA=s==='MLA';
+    html+=`<tr${isMLA?' class="mla"':''}>
+      <td><strong${isMLA?' style="color:#1a73e8"':''}>${s}</strong></td>
+      <td style="text-align:right">${pct(d.d00_07[i])}</td>
+      <td style="text-align:right">${pct(d.d08_30[i])}</td>
+      <td style="text-align:right">${pct(d.d31_60[i])}</td>
+      <td style="text-align:right;font-weight:600;color:${isMLA?'#aaa':'#1d9e75'}">${pct(d60p)}</td>
+    </tr>`;
+  });
+  html+='</tbody>';
+  document.getElementById('bucketCompareTable').innerHTML=html;
+})();
+
+new Chart(document.getElementById('churnChart'),{
+  type:'doughnut',
+  data:{
+    labels:['TRIAL_PERIOD_EXCEED','TRIAL_ACTIVE','NO_FREE_TRIAL','NORMALIZED','TRIAL_AMOUNT_EXCEED'],
+    datasets:[{
+      data:[49278,15164,1389,661,15],
+      backgroundColor:['#e24b4a','#378add','#888','#1d9e75','#ba7517'],
+      borderColor:'#fff',
+      borderWidth:2,
+    }]
+  },
+  options:{
+    animation:false,responsive:true,maintainAspectRatio:false,cutout:'60%',
+    plugins:{legend:{display:false},datalabels:{display:false},
+      tooltip:{callbacks:{label:c=>c.label+': '+fmtN(c.raw)+' ('+((c.raw/66744)*100).toFixed(1)+'%)'}}
+    }
+  }
+});
+
+new Chart(document.getElementById('churnEarnChart'),{
+  type:'doughnut',
+  data:{
+    labels:['Sin earnings','$1–$30K ARS','$30K–$50K ARS','$50K–$100K ARS','$100K–$500K ARS','+$500K ARS'],
+    datasets:[{
+      data:[26914,31889,3826,2661,1207,10],
+      backgroundColor:['#e24b4a','#f4a840','#a8d5b5','#5cbe95','#1d9e75','#0d5e3f'],
+      borderColor:'#fff',
+      borderWidth:2,
+    }]
+  },
+  options:{
+    animation:false,responsive:true,maintainAspectRatio:false,cutout:'60%',
+    plugins:{legend:{display:false},datalabels:{display:false},
+      tooltip:{callbacks:{label:c=>c.label+': '+fmtN(c.raw)+' ('+((c.raw/66744)*100).toFixed(1)+'%)'}}
+    }
+  }
+});
+
+new Chart(document.getElementById('churnSegChart'),{
+  type:'doughnut',
+  data:{
+    labels:['New','Recurrent','Recovered'],
+    datasets:[{
+      data:[41838,20691,4215],
+      backgroundColor:['#1a1a2e','#555577','#9999bb'],
+      borderColor:'#fff',
+      borderWidth:2,
+    }]
+  },
+  options:{animation:false,responsive:true,maintainAspectRatio:false,cutout:'60%',
+    plugins:{legend:{display:false},datalabels:{display:false},
+      tooltip:{callbacks:{label:c=>c.label+': '+fmtN(c.raw)+' ('+((c.raw/66744)*100).toFixed(1)+'%)'}}
+    }
+  }
+});
+</script>
+</body>
+</html>
