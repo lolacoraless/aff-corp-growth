@@ -240,7 +240,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 </div>
 
 <div class="s-title" id="s-funnel">Funnel de conversión — Cohort Registrados Mar-Abr 2026</div>
-<div class="insight">De los registrados en el Cohort Mar-Abr, MLA tiene la menor proporción con al menos una venta entre los sites (27%, vs 29–41% en otros sites). El cuello de botella no es generar ventas sino habilitar el cobro: solo el 0.5% de los registrados completó el proceso de monotributo. MLM también requiere habilitación fiscal, pero su tasa de finalización es incluso menor que la de MLA (0.1% vs 0.5%).</div>
+<div class="insight">De los registrados en el Cohort Mar-Abr, el <strong>57.4% de los afiliados de MLA generó al menos un link de producto</strong> (294,990 usuarios) — proporción intermedia vs MLB (63.2%), MLC (51.4%) y MLM (49.6%). La brecha se amplía en conversión a venta: MLA tiene la menor proporción con al menos una venta entre los sites (27%, vs 29–41% en otros sites). El cuello de botella no es generar ventas sino habilitar el cobro: solo el 0.5% de los registrados completó el proceso de monotributo. MLM también requiere habilitación fiscal, pero su tasa de finalización es incluso menor que la de MLA (0.1% vs 0.5%).</div>
 
 <div class="card">
   <div id="funnelViz"></div>
@@ -480,6 +480,7 @@ new Chart(document.getElementById('bhChart'),{
 
 const funnelSteps=[
   {label:'Registrado',n:514067},
+  {label:'Generó link de producto',n:294990},
   {label:'Generó venta TD7D',n:141758},
   {label:'Generó earnings LC',n:82326},
   {label:'Entró al facturador',n:10153},
@@ -487,7 +488,7 @@ const funnelSteps=[
   {label:'Terminó el facturador',n:2794},
   {label:'Recibió pago',n:625},
 ];
-const colors=['#1a73e8','#1a73e8','#1d9e75','#1d9e75','#ba7517','#ba7517','#d93025','#533AB7'];
+const colors=['#1a73e8','#1a73e8','#1a73e8','#1d9e75','#1d9e75','#ba7517','#ba7517','#d93025','#533AB7'];
 const max=funnelSteps[0].n;
 const container=document.getElementById('funnelViz');
 funnelSteps.forEach((s,i)=>{
