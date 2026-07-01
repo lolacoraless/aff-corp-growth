@@ -826,7 +826,7 @@ Write-Host "HTML updated ($([Math]::Round(($html.Length)/1024,0)) KB)."
 # ==== UPLOAD TO GRID (presigned 3-step flow para archivos grandes) ============
 Write-Host "Uploading to Grid..." -ForegroundColor Cyan
 # Multipart directo con timeout extendido (presigned proxy tenia bug en backend storage)
-$cfg = '{"skill_version":"3.6.0","doc_id":"01KRE46H4452DPPVSYM5BKXJ14","skip_version_check":true}'
+$cfg = '{"skill_version":"3.6.3","doc_id":"01KRE46H4452DPPVSYM5BKXJ14"}'
 $tmpCfg = [IO.Path]::GetTempFileName()
 [IO.File]::WriteAllText($tmpCfg, $cfg, [System.Text.Encoding]::ASCII)
 $gridResp = & "C:\Windows\System32\curl.exe" -s --max-time 300 -X POST "https://grid.melioffice.com/api/v1/engine/run" -F "config=<$tmpCfg" -F "file=@$htmlPath"
