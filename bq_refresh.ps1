@@ -587,15 +587,27 @@ FROM seg GROUP BY 1,2 ORDER BY SITE_ID, mes_reg
 '@
 
 $sqlMap["act_source"] = d @'
-WITH reg_chan AS (
-  SELECT cus_cust_id AS user_id, site_id,
-    DATE_TRUNC(DATE(ds), MONTH) AS mes_reg,
+WITH register AS (
+  SELECT USER_ID, SITE_ID,
+    DATE_TRUNC(DATE(DATE_REGISTER), MONTH) AS mes_reg
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_AFFILIATE`
+  WHERE DATE_REGISTER >= '${D.HIST}'
+    AND DATE_TRUNC(DATE(DATE_REGISTER), MONTH) < '${D.CUR}'
+    AND SITE_ID IN ('MLB','MLM','MLC','MLA')
+),
+reg_canal AS (
+  SELECT user_id, site_id,
     CASE WHEN UPPER(origen_grouped) = 'POM' THEN 'POM' ELSE 'Direct' END AS canal
   FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`
   WHERE DATE(ds) >= '${D.HIST}'
-    AND DATE_TRUNC(DATE(ds), MONTH) < '${D.CUR}'
     AND site_id IN ('MLB','MLM','MLC','MLA')
     AND origen_grouped IN ('POM', 'Direct')
+),
+reg_with_canal AS (
+  SELECT a.USER_ID, a.SITE_ID, a.mes_reg,
+    COALESCE(c.canal, 'Direct') AS canal
+  FROM register a
+  LEFT JOIN reg_canal c ON a.USER_ID = c.user_id AND a.SITE_ID = c.site_id
 ),
 first_sale AS (
   SELECT SIT_SITE_ID, AFFILIATE_ID,
@@ -607,13 +619,13 @@ first_sale AS (
       OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))
   GROUP BY 1, 2
 )
-SELECT r.site_id, r.mes_reg, r.canal,
-  COUNT(DISTINCT r.user_id) AS total_registros,
-  COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.user_id, NULL)) AS activaron_mismo_mes,
-  ROUND(SAFE_DIVIDE(COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.user_id, NULL)),
-    COUNT(DISTINCT r.user_id)) * 100, 1) AS pct_activaron
-FROM reg_chan r
-LEFT JOIN first_sale f ON r.user_id = f.AFFILIATE_ID AND r.site_id = f.SIT_SITE_ID
+SELECT r.SITE_ID AS site_id, r.mes_reg, r.canal,
+  COUNT(DISTINCT r.USER_ID) AS total_registros,
+  COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.USER_ID, NULL)) AS activaron_mismo_mes,
+  ROUND(SAFE_DIVIDE(COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.USER_ID, NULL)),
+    COUNT(DISTINCT r.USER_ID)) * 100, 1) AS pct_activaron
+FROM reg_with_canal r
+LEFT JOIN first_sale f ON r.USER_ID = f.AFFILIATE_ID AND r.SITE_ID = f.SIT_SITE_ID
 GROUP BY 1, 2, 3
 ORDER BY site_id, mes_reg, canal
 '@
