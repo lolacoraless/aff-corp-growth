@@ -596,7 +596,7 @@ WITH register AS (
     AND SITE_ID IN ('MLB','MLM','MLC','MLA')
 ),
 reg_canal AS (
-  SELECT user_id, site_id,
+  SELECT CAST(user_id AS INT64) AS user_id, site_id,
     CASE WHEN UPPER(origen_grouped) = 'POM' THEN 'POM' ELSE 'Direct' END AS canal
   FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`
   WHERE DATE(ds) >= '${D.HIST}'
