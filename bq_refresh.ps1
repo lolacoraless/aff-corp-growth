@@ -773,7 +773,7 @@ $jobs.Values | Wait-Job | ForEach-Object {
     $r = Receive-Job $_
     $sec = [Math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
     $status = if ($r.ok) { "OK  " } else { "FAIL" }
-    $detail = if ($r.ok) { "$([Math]::Round($r.json.Length/1024,0)) KB" } else { $r.error.Substring(0,[Math]::Min(80,$r.error.Length)) }
+    $detail = if ($r.ok) { "$([Math]::Round($r.json.Length/1024,0)) KB" } else { $r.error.Substring(0,[Math]::Min(500,$r.error.Length)) }
     Write-Host "  [${sec}s] $status $($r.name) — $detail"
     $rawResults[$r.name] = $r
     Remove-Job $_ -Force
