@@ -586,6 +586,38 @@ SELECT SITE_ID, mes_reg, COUNT(*) AS total,
 FROM seg GROUP BY 1,2 ORDER BY SITE_ID, mes_reg
 '@
 
+$sqlMap["act_source"] = d @'
+WITH reg_chan AS (
+  SELECT user_id, site_id,
+    DATE_TRUNC(DATE(ds), MONTH) AS mes_reg,
+    CASE WHEN UPPER(origen_grouped) = 'POM' THEN 'POM' ELSE 'Direct' END AS canal
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`
+  WHERE DATE(ds) >= '${D.HIST}'
+    AND DATE_TRUNC(DATE(ds), MONTH) < '${D.CUR}'
+    AND site_id IN ('MLB','MLM','MLC','MLA')
+    AND origen_grouped IN ('POM', 'Direct')
+),
+first_sale AS (
+  SELECT SIT_SITE_ID, AFFILIATE_ID,
+    DATE_TRUNC(MIN(ORD_CREATED_DT), MONTH) AS mes_primera_venta
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
+  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_STATUS = 'paid'
+    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.HIST}'
+    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)
+      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))
+  GROUP BY 1, 2
+)
+SELECT r.site_id, r.mes_reg, r.canal,
+  COUNT(DISTINCT r.user_id) AS total_registros,
+  COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.user_id, NULL)) AS activaron_mismo_mes,
+  ROUND(SAFE_DIVIDE(COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.user_id, NULL)),
+    COUNT(DISTINCT r.user_id)) * 100, 1) AS pct_activaron
+FROM reg_chan r
+LEFT JOIN first_sale f ON r.user_id = f.AFFILIATE_ID AND r.site_id = f.SIT_SITE_ID
+GROUP BY 1, 2, 3
+ORDER BY site_id, mes_reg, canal
+'@
+
 $sqlMap["churn"] = d @'
 WITH monthly_active AS (
   SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT,MONTH) AS month, AFFILIATE_ID
@@ -697,7 +729,7 @@ FROM window_sales GROUP BY 1
 '@
 
 # ==== LAUNCH ALL 17 JOBS IN PARALLEL =========================================
-Write-Host "Launching $($sqlMap.Count) queries in parallel via bq CLI..." -ForegroundColor Cyan
+Write-Host "Launching $($sqlMap.Count) queries in parallel via bq CLI..." -ForegroundColor Cyan  # 21 total
 $startTime = Get-Date
 
 $jobBlock = {
@@ -795,6 +827,7 @@ $data = [ordered]@{
     data_freshness  = (Parse-BQResult $rawResults["data_freshness"].json)
     act1            = (Parse-BQResult $rawResults["act1"].json)
     act2          = (Parse-BQResult $rawResults["act2"].json)
+    act_source    = (Parse-BQResult $rawResults["act_source"].json)
     churn         = (Parse-BQResult $rawResults["churn"].json)
     churn_comp    = (Parse-BQResult $rawResults["churn_comp"].json)
     churn_mtd     = (Parse-BQResult $rawResults["churn_mtd"].json)

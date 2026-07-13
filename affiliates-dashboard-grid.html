@@ -2161,7 +2161,9 @@ function renderAct(site) {
   const samePct   = (d.same_pct   ?? []).slice(-n);
   const cohorts   = (d.cohorts    ?? []).slice(-n);
 
-  // Chart 1: Activación en mismo mes de registro (count + % line)
+  // Chart 1: Activación en mismo mes de registro (count + % lines)
+  const pomPct    = (d.pom_pct    ?? []).slice(-n);
+  const directPct = (d.direct_pct ?? []).slice(-n);
   mkChart(`act1-${site}`, {
     type:'bar',
     data:{labels:months, datasets:[
@@ -2170,10 +2172,22 @@ function renderAct(site) {
        backgroundColor:'rgba(52,131,250,0.75)',
        borderRadius:3, order:2,
       },
-      {label:'% sobre registros del mes →',
+      {label:'% total →',
        data:samePct, type:'line', yAxisID:'ypct',
        borderColor:C.green, backgroundColor:'transparent',
        borderWidth:2, pointRadius:3, tension:.4, order:1,
+      },
+      {label:'% POM →',
+       data:pomPct, type:'line', yAxisID:'ypct',
+       borderColor:'#2563EB', backgroundColor:'transparent',
+       borderWidth:1.5, pointRadius:2, tension:.4, order:1,
+       borderDash:[5,3],
+      },
+      {label:'% Direct →',
+       data:directPct, type:'line', yAxisID:'ypct',
+       borderColor:'#F97316', backgroundColor:'transparent',
+       borderWidth:1.5, pointRadius:2, tension:.4, order:1,
+       borderDash:[5,3],
       },
     ]},
     options:{
@@ -2181,7 +2195,12 @@ function renderAct(site) {
       plugins:{
         legend:baseLegend(10),
         tooltip:{callbacks:{label:ctx=>{
-          if(ctx.dataset.yAxisID==='ypct') return ` % de registros: ${ctx.raw}%${momStr(ctx)}`;
+          if(ctx.dataset.yAxisID==='ypct'){
+            const lbl = ctx.dataset.label;
+            if(lbl.startsWith('% POM'))    return ` % POM: ${ctx.raw}%`;
+            if(lbl.startsWith('% Direct')) return ` % Direct: ${ctx.raw}%`;
+            return ` % total: ${ctx.raw}%${momStr(ctx)}`;
+          }
           return ` Activaron: ${fmt(ctx.raw)} usuarios${momStr(ctx)}`;
         }}},
       },
@@ -3230,7 +3249,39 @@ SELECT SITE_ID, mes_reg, COUNT(*) AS total,
   ROUND(COUNTIF(cohort='no_act')/ COUNT(*) * 100, 1) AS pct_no_act
 FROM seg GROUP BY 1,2 ORDER BY SITE_ID, mes_reg`;
 
-// ── 10. CHURN — % churneados nuevos / activos mes anterior ───────────────────
+// ── 10. ACTIVACIÓN POR CANAL (POM vs Direct) ────────────────────────────────
+Q.ACTIVATION_SOURCE = `
+WITH reg_chan AS (
+  SELECT user_id, site_id,
+    DATE_TRUNC(DATE(ds), MONTH) AS mes_reg,
+    CASE WHEN UPPER(origen_grouped) = 'POM' THEN 'POM' ELSE 'Direct' END AS canal
+  FROM \`meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL\`
+  WHERE DATE(ds) >= '\${D.HIST}'
+    AND DATE_TRUNC(DATE(ds), MONTH) < '\${D.CUR}'
+    AND site_id IN ('MLB','MLM','MLC','MLA')
+    AND origen_grouped IN ('POM', 'Direct')
+),
+first_sale AS (
+  SELECT SIT_SITE_ID, AFFILIATE_ID,
+    DATE_TRUNC(MIN(ORD_CREATED_DT), MONTH) AS mes_primera_venta
+  FROM \`meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY\`
+  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_STATUS = 'paid'
+    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '\${D.HIST}'
+    AND ((ORD_CREATED_DT >= '\${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)
+      OR (ORD_CREATED_DT < '\${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))
+  GROUP BY 1, 2
+)
+SELECT r.site_id, r.mes_reg, r.canal,
+  COUNT(DISTINCT r.user_id) AS total_registros,
+  COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.user_id, NULL)) AS activaron_mismo_mes,
+  ROUND(SAFE_DIVIDE(COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.user_id, NULL)),
+    COUNT(DISTINCT r.user_id)) * 100, 1) AS pct_activaron
+FROM reg_chan r
+LEFT JOIN first_sale f ON r.user_id = f.AFFILIATE_ID AND r.site_id = f.SIT_SITE_ID
+GROUP BY 1, 2, 3
+ORDER BY site_id, mes_reg, canal`;
+
+// ── 11. CHURN — % churneados nuevos / activos mes anterior ───────────────────
 Q.CHURN = `
 WITH monthly_active AS (
   SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT, MONTH) AS month, AFFILIATE_ID
@@ -3892,7 +3943,7 @@ function processNmv(monRows, wkRows, mtdRows) {
   });
 }
 
-function processActivation(chart1Rows, cohortRows) {
+function processActivation(chart1Rows, cohortRows, sourceRows) {
   ['MLB','MLM','MLC','MLA'].forEach(site => {
     const c1 = chart1Rows.filter(r => r.site_id === site)
                           .sort((a,b) => String(a.mes_reg).localeCompare(String(b.mes_reg)));
@@ -3906,6 +3957,16 @@ function processActivation(chart1Rows, cohortRows) {
       DATA[site].act.cohorts = c2.map(r => [
         r.pct_d7, r.pct_d15, r.pct_d30, r.pct_d45, r.pct_d46p, r.pct_no_act
       ]);
+    }
+    if (sourceRows && sourceRows.length) {
+      const months = DATA[site].months;
+      const pomMap = {}, dirMap = {};
+      sourceRows.filter(r => r.site_id === site).forEach(r => {
+        if (r.canal === 'POM') pomMap[r.mes_reg] = r.pct_activaron;
+        else dirMap[r.mes_reg] = r.pct_activaron;
+      });
+      DATA[site].act.pom_pct    = months.map(m => pomMap[m] ?? null);
+      DATA[site].act.direct_pct = months.map(m => dirMap[m] ?? null);
     }
   });
 }
@@ -4078,6 +4139,8 @@ function addCurrentMonthPoints() {
     if (da.same_count) da.same_count.push(null);
     if (da.same_pct)   da.same_pct.push(null);
     if (da.cohorts)    da.cohorts.push([null,null,null,null,null,null]);
+    if (da.pom_pct)    da.pom_pct.push(null);
+    if (da.direct_pct) da.direct_pct.push(null);
   });
 }
 
@@ -4126,7 +4189,7 @@ async function autoLoadFromGAS() {
                            processNmv(data.nmv_monthly, data.nmv_weekly, data.nmv_mtd);
     if (data.nmv_pacing)   processNmvPacing(data.nmv_pacing);
     if (data.act1 && data.act2)
-                           processActivation(data.act1, data.act2);
+                           processActivation(data.act1, data.act2, data.act_source);
     if (data.churn && data.churn_comp && data.churn_mtd)
                            processChurn(data.churn, data.churn_comp, data.churn_mtd);
 
@@ -4219,7 +4282,7 @@ async function loadSnapshot() {
     if (d.nmv_monthly && d.nmv_weekly && d.nmv_mtd)
                                                  processNmv(d.nmv_monthly, d.nmv_weekly, d.nmv_mtd);
     if (d.nmv_pacing)                            processNmvPacing(d.nmv_pacing);
-    if (d.act1 && d.act2)                        processActivation(d.act1, d.act2);
+    if (d.act1 && d.act2)                        processActivation(d.act1, d.act2, d.act_source);
     if (d.churn && d.churn_comp && d.churn_mtd)  processChurn(d.churn, d.churn_comp, d.churn_mtd);
 
     addCurrentMonthPoints();
@@ -4369,6 +4432,7 @@ const QUERY_DEFS = {
     subtitle: 'AFFILIATE_AFFILIATE · AFFILIATE_REGISTRATION_CHANNEL · BT_AFFI_SALES_ATTRIBUTION_DAILY',
     tabs: [
       { label: 'Cohortes',  desc: 'Tiempo desde registro hasta primera venta por cohorte mensual y canal de registro.', getQ: () => Q.ACTIVATION_COHORTS },
+      { label: 'Por Canal', desc: '% de activación mismo mes separado por canal de registro: POM vs Direct.', getQ: () => Q.ACTIVATION_SOURCE },
     ]
   },
   churn: {
