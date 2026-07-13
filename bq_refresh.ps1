@@ -588,7 +588,7 @@ FROM seg GROUP BY 1,2 ORDER BY SITE_ID, mes_reg
 
 $sqlMap["act_source"] = d @'
 WITH reg_chan AS (
-  SELECT user_id, site_id,
+  SELECT cus_cust_id AS user_id, site_id,
     DATE_TRUNC(DATE(ds), MONTH) AS mes_reg,
     CASE WHEN UPPER(origen_grouped) = 'POM' THEN 'POM' ELSE 'Direct' END AS canal
   FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`
