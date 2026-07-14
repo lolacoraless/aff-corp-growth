@@ -3814,7 +3814,17 @@ function processSpend(rows) {
 
     // Alinear al eje de meses ya establecido (behaviour o reg, el que llegó primero)
     if (DATA[site].months && DATA[site].months.length) {
-      DATA[site].reg.mon.spend_pom = DATA[site].months.map(lbl => spendByLabel[lbl] ?? null);
+      // Si processBehaviour ya incluyó el mes corriente en months, rellenar ese slot
+      // con el gasto MTD proyectado (addCurrentMonthPoints no lo hará porque retorna early).
+      const now = new Date();
+      const currMonShort = MON_NAMES_ES[now.getMonth()] + ' ' + String(now.getFullYear()).slice(2);
+      const curInMonths = DATA[site].months.at(-1) === currMonShort;
+      const projSpend = (curInMonths && mtdRow && DAYS_ELAPS > 0)
+        ? Math.round(mtdRow.cost_lc * DAYS_MAY / DAYS_ELAPS) : null;
+      DATA[site].reg.mon.spend_pom = DATA[site].months.map((lbl, i) => {
+        if (curInMonths && i === DATA[site].months.length - 1) return projSpend;
+        return spendByLabel[lbl] ?? null;
+      });
     } else {
       // Behaviour y reg aún no cargaron — guardar raw; renderReg alineará luego
       DATA[site].reg.mon.spend_pom = histRows.map(r => r.cost_lc);
