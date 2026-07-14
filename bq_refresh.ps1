@@ -407,23 +407,23 @@ GROUP BY 1,2,3 ORDER BY site_id, month_id
 
 $sqlMap["links_monthly"] = d @'
 WITH share_pos AS (
-  SELECT ds, site, user_id, COUNT(*) AS links
-  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUTO_SHARE`
-  WHERE ds >= '${D.HIST}'
-    AND site IN ('MLB','MLM','MLC','MLA')
-    AND path = '/share/action'
+  SELECT EVENT_DT AS ds, SIT_SITE_ID AS site, CUS_CUST_ID AS user_id, COUNT(*) AS links
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
+  WHERE EVENT_DT >= '${D.HIST}'
+    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND PATH_NAME = '/share/action'
   GROUP BY 1, 2, 3
 ),
 stripe_hub AS (
-  SELECT ds, site, user_id, COUNT(*) AS links
-  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUTO`
-  WHERE ds >= '${D.HIST}'
-    AND site IN ('MLB','MLM','MLC','MLA')
+  SELECT EVENT_DT AS ds, SIT_SITE_ID AS site, CUS_CUST_ID AS user_id, COUNT(*) AS links
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
+  WHERE EVENT_DT >= '${D.HIST}'
+    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
     AND (
-      path IN ('/affiliates/stripe/link', '/affiliates/linkbuilder/v1/generate')
-      OR path IN ('/affiliates/stripe_webview/copy_link', '/affiliates/stripe_webview/share_link')
-      OR (path = '/affiliates/hub/share/select'
-          AND JSON_EXTRACT_SCALAR(event_data, '$.select_value') IN ('copy_link','copy_id'))
+      PATH_NAME IN ('/affiliates/stripe/link', '/affiliates/linkbuilder/v1/generate')
+      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link', '/affiliates/stripe_webview/share_link')
+      OR (PATH_NAME = '/affiliates/hub/share/select'
+          AND JSON_EXTRACT_SCALAR(EVENT_DATA, '$.select_value') IN ('copy_link','copy_id'))
     )
   GROUP BY 1, 2, 3
 ),
@@ -888,6 +888,15 @@ $data = [ordered]@{
 
 $snapshot = [ordered]@{ savedAt=$tsNow; savedAtDisplay=$dispNow; data=$data }
 $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
+
+# PS5.1 bug: empty @() arrays serialize as null instead of []. Fix all data keys.
+@('behaviour','beh_mtd','beh_pacing','qr_rolling','registrations','reg_mtd',
+  'reg_pacing','landing_traffic','landing_pacing','spend_pom','links_monthly',
+  'nmv_monthly','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
+  'act1','act2','churn','churn_comp','churn_mtd') | ForEach-Object {
+    $snapshotJson = $snapshotJson.Replace("`"$_`":null", "`"$_`":[]")
+}
+
 $kb = [Math]::Round($snapshotJson.Length / 1024, 1)
 Write-Host "Snapshot: ${kb} KB"
 $data.GetEnumerator() | ForEach-Object {
