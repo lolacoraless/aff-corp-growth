@@ -405,91 +405,6 @@ FROM raw WHERE site_id IN ('MLB','MLM','MLC','MLA')
 GROUP BY 1,2,3 ORDER BY site_id, month_id
 '@
 
-$sqlMap["links_monthly"] = d @'
-WITH share_pos AS (
-  SELECT EVENT_DT AS ds, SIT_SITE_ID AS site, CUS_CUST_ID AS user_id, COUNT(*) AS links
-  FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
-  WHERE EVENT_DT >= '${D.HIST}'
-    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
-    AND PATH_NAME = '/share/action'
-  GROUP BY 1, 2, 3
-),
-stripe_hub AS (
-  SELECT EVENT_DT AS ds, SIT_SITE_ID AS site, CUS_CUST_ID AS user_id, COUNT(*) AS links
-  FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
-  WHERE EVENT_DT >= '${D.HIST}'
-    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
-    AND (
-      PATH_NAME IN ('/affiliates/stripe/link', '/affiliates/linkbuilder/v1/generate')
-      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link', '/affiliates/stripe_webview/share_link')
-      OR (PATH_NAME = '/affiliates/hub/share/select'
-          AND JSON_EXTRACT_SCALAR(EVENT_DATA, '$.select_value') IN ('copy_link','copy_id'))
-    )
-  GROUP BY 1, 2, 3
-),
-monthly_links AS (
-  SELECT DATE_TRUNC(ds, MONTH) AS mes, site, user_id, SUM(links) AS links
-  FROM (
-    SELECT ds, site, user_id, links FROM share_pos
-    UNION ALL
-    SELECT ds, site, user_id, links FROM stripe_hub
-  )
-  GROUP BY 1, 2, 3
-),
-first_active AS (
-  SELECT site, user_id, MIN(mes) AS first_mes
-  FROM monthly_links
-  GROUP BY 1, 2
-),
-active_seg AS (
-  SELECT cur.mes, cur.site, cur.user_id, cur.links,
-    CASE
-      WHEN cur.mes = fa.first_mes THEN 'new'
-      WHEN prev.user_id IS NOT NULL THEN 'recurrent'
-      ELSE 'recovered'
-    END AS segment
-  FROM monthly_links cur
-  LEFT JOIN monthly_links prev
-    ON cur.user_id = prev.user_id AND cur.site = prev.site
-    AND prev.mes = DATE_SUB(cur.mes, INTERVAL 1 MONTH)
-  LEFT JOIN first_active fa ON cur.user_id = fa.user_id AND cur.site = fa.site
-  WHERE cur.mes >= '2026-01-01'
-),
-by_seg AS (
-  SELECT mes, site, segment,
-    COUNT(DISTINCT user_id) AS afiliados,
-    ROUND(AVG(links), 1) AS avg_links,
-    SUM(links) AS total_links
-  FROM active_seg GROUP BY 1, 2, 3
-),
-totals AS (
-  SELECT mes, site, 'total' AS segment,
-    COUNT(DISTINCT user_id) AS afiliados,
-    ROUND(AVG(links), 1) AS avg_links,
-    SUM(links) AS total_links
-  FROM active_seg GROUP BY 1, 2
-),
-churn AS (
-  SELECT DATE_ADD(prev.mes, INTERVAL 1 MONTH) AS mes,
-    prev.site, 'churn' AS segment,
-    COUNT(DISTINCT prev.user_id) AS afiliados,
-    NULL AS avg_links, NULL AS total_links
-  FROM monthly_links prev
-  WHERE NOT EXISTS (
-    SELECT 1 FROM monthly_links cur
-    WHERE cur.user_id = prev.user_id AND cur.site = prev.site
-      AND cur.mes = DATE_ADD(prev.mes, INTERVAL 1 MONTH)
-  )
-  AND DATE_ADD(prev.mes, INTERVAL 1 MONTH)
-    BETWEEN '2026-01-01' AND DATE_TRUNC(CURRENT_DATE(), MONTH)
-  GROUP BY 1, 2, 3
-)
-SELECT * FROM by_seg
-UNION ALL SELECT * FROM totals
-UNION ALL SELECT * FROM churn
-ORDER BY mes, site, segment
-'@
-
 $sqlMap["nmv_monthly"] = d @'
 WITH ts AS (
   SELECT DATE_TRUNC(DT,MONTH) AS mes, SIT_SITE_ID,
@@ -873,7 +788,6 @@ $data = [ordered]@{
     landing_traffic = (Parse-BQResult $rawResults["landing_traffic"].json)
     landing_pacing  = (Parse-BQResult $rawResults["landing_pacing"].json)
     spend_pom       = (Parse-BQResult $rawResults["spend_pom"].json)
-    links_monthly   = (Parse-BQResult $rawResults["links_monthly"].json)
     nmv_monthly   = (Parse-BQResult $rawResults["nmv_monthly"].json)
     nmv_weekly    = (Parse-BQResult $rawResults["nmv_weekly"].json)
     nmv_mtd       = (Parse-BQResult $rawResults["nmv_mtd"].json)
@@ -891,7 +805,7 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
 
 # PS5.1 bug: empty @() arrays serialize as null instead of []. Fix all data keys.
 @('behaviour','beh_mtd','beh_pacing','qr_rolling','registrations','reg_mtd',
-  'reg_pacing','landing_traffic','landing_pacing','spend_pom','links_monthly',
+  'reg_pacing','landing_traffic','landing_pacing','spend_pom',
   'nmv_monthly','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
   'act1','act2','churn','churn_comp','churn_mtd') | ForEach-Object {
     $snapshotJson = $snapshotJson.Replace("`"$_`":null", "`"$_`":[]")
