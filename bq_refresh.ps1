@@ -412,7 +412,6 @@ WITH share_pos AS (
   WHERE ds >= '${D.HIST}'
     AND site IN ('MLB','MLM','MLC','MLA')
     AND path = '/share/action'
-    AND JSON_EXTRACT_SCALAR(event_data, '$.user_type') = 'affiliates'
   GROUP BY 1, 2, 3
 ),
 stripe_hub AS (
