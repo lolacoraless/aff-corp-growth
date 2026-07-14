@@ -998,6 +998,7 @@ const baseLegend = (sz=10.5) => ({position:'top',labels:{font:{size:sz},padding:
 // ═══════════════════════════════════════════════════════
 function renderNmv(site, gran='monthly') {
   const unit = NMV_UNITS[site];
+  const npaLabel = DATA[site].npaDynLabel || unit.npaLabel;
   const isW  = gran === 'weekly';
   const labels = isW ? W_8 : DATA[site].months;
   const n = labels.length;
@@ -1156,13 +1157,13 @@ function renderNmv(site, gran='monthly') {
       responsive:true, maintainAspectRatio:false,
       plugins: {
         legend: { display: npaDs.length > 1, position:'top', labels:{font:{size:9.5}, padding:6, boxWidth:8} },
-        title:  { display:true, text:`NMV x aff (${unit.npaLabel})`, font:{size:11,weight:'700'}, color:'#1F2937', padding:{bottom:4} },
+        title:  { display:true, text:`NMV x aff (${npaLabel})`, font:{size:11,weight:'700'}, color:'#1F2937', padding:{bottom:4} },
         tooltip: {
           mode:'index', intersect:false,
           callbacks: {
             label: ctx => {
               if (ctx.raw == null) return null;
-              return ` ${ctx.dataset.label}: ${fmtN(ctx.raw,1)} ${unit.npaLabel}${momStr(ctx)}`;
+              return ` ${ctx.dataset.label}: ${fmtN(ctx.raw,1)} ${npaLabel}${momStr(ctx)}`;
             }
           }
         },
@@ -1203,8 +1204,8 @@ function renderNmv(site, gran='monthly') {
           <td>${deltaVsAbr(mNmv, pNmv)}</td>
         </tr>
         <tr>
-          <td><div class="mname"><span class="dot" style="background:#111827"></span>NMV x aff (${unit.npaLabel})</div></td>
-          <td class="num">${mNpa != null ? fmtN(mNpa,1)+' '+unit.npaLabel : '—'}</td>
+          <td><div class="mname"><span class="dot" style="background:#111827"></span>NMV x aff (${npaLabel})</div></td>
+          <td class="num">${mNpa != null ? fmtN(mNpa,1)+' '+npaLabel : '—'}</td>
           <td>${deltaVsAbr(mNpa, pNpa)}</td>
         </tr>
       </tbody>
@@ -4147,7 +4148,24 @@ function processNmv(monRows, wkRows, mtdRows) {
     const unit = NMV_UNITS[site];
     // divisor to convert to display units (millions / billions)
     const nmvDiv = (unit.nmvLabel.includes('B')) ? 1e9 : 1e6;
-    const npaDiv = (unit.npaLabel.includes('M')) ? 1e6 : 1e3;
+
+    // Auto-detect NPA display unit from actual data magnitude
+    const allNpaRaw = monRows
+      .filter(r => String(r.sit_site_id) === site && r.npa != null && r.npa > 0)
+      .map(r => +r.npa);
+    const maxNpa = allNpaRaw.length ? Math.max(...allNpaRaw) : 0;
+    const CURR_SYM = { MLB:'R$', MLM:'MX$', MLC:'CLP$', MLA:'ARS$' };
+    const sym = CURR_SYM[site] || '';
+    let npaDiv, npaDynLabel;
+    if      (maxNpa >= 1e9) { npaDiv = 1e9; npaDynLabel = `B ${sym}`; }
+    else if (maxNpa >= 1e6) { npaDiv = 1e6; npaDynLabel = `M ${sym}`; }
+    else if (maxNpa >= 1e3) { npaDiv = 1e3; npaDynLabel = `K ${sym}`; }
+    else if (maxNpa > 0)    { npaDiv = 1;   npaDynLabel = sym; }
+    else { // no BQ data — fall back to original unit so mock data labels stay correct
+      npaDiv = (unit.npaLabel.includes('M')) ? 1e6 : 1e3;
+      npaDynLabel = null;
+    }
+    if (npaDynLabel) DATA[site].npaDynLabel = npaDynLabel;
 
     if (!DATA[site].nmv_segs) DATA[site].nmv_segs = {};
 
