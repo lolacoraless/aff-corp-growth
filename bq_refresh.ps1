@@ -504,7 +504,7 @@ beh AS (
 ),
 seg AS (
   SELECT DATE_TRUNC(CAST(DT AS DATE),MONTH) AS mes, SIT_SITE_ID,
-    CASE WHEN SEGMENT='Long Tail' THEN 'lt' ELSE 'nlt' END AS seg,
+    CASE WHEN SEGMENT IN ('KAM','Potential KAM') THEN 'nlt' ELSE 'lt' END AS seg,
     SUM(NMV_AFF) AS nmv_aff
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
   WHERE CAST(DT AS DATE) >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
