@@ -504,12 +504,11 @@ beh AS (
 ),
 seg AS (
   SELECT DATE_TRUNC(CAST(DT AS DATE),MONTH) AS mes, SIT_SITE_ID,
-    CASE WHEN SEGMENT='Key Accounts' THEN 'ka'
-         WHEN SEGMENT='Long Tail'    THEN 'lt' END AS seg,
+    CASE WHEN SEGMENT='Long Tail' THEN 'lt' ELSE 'nlt' END AS seg,
     SUM(NMV_AFF) AS nmv_aff
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
   WHERE CAST(DT AS DATE) >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
-  GROUP BY 1,2,3 HAVING seg IS NOT NULL
+  GROUP BY 1,2,3
 )
 SELECT s.mes, s.SIT_SITE_ID, s.seg, s.nmv_aff, t.nmv_ts,
   SAFE_DIVIDE(s.nmv_aff,t.nmv_ts) AS share_ts,

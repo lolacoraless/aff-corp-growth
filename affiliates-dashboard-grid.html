@@ -421,12 +421,12 @@ const NMV_UNITS = {
 // share/nmv = fracción del total; npa = múltiplo del NPA total (refleja densidad)
 const SEG_MULTS = {
   all: { share:1.00, nmv:1.00, npa:1.00 },
-  ka:  { share:0.55, nmv:0.55, npa:3.20 }, // Key Accounts (incl. Content y Corporate)
+  nlt: { share:0.55, nmv:0.55, npa:3.20 }, // No LT (KA + Content + Corporate + otros)
   lt:  { share:0.45, nmv:0.45, npa:0.55 }, // Long Tail
 };
 
 const SEG_LABELS = {
-  all:'Todos', ka:'Key Accounts', lt:'Long Tail',
+  all:'Todos', nlt:'No LT', lt:'Long Tail',
 };
 
 // ═══════════════════════════════════════════════════════
@@ -1019,7 +1019,7 @@ function renderNmv(site, gran='monthly') {
   };
 
   const allD = getD('all');
-  const kaD  = isW ? null : getD('ka');
+  const nltD = isW ? null : getD('nlt');
   const ltD  = isW ? null : getD('lt');
 
   // PP MoM delta helper for tooltip
@@ -1051,10 +1051,10 @@ function renderNmv(site, gran='monthly') {
               if (v == null) return null;
               const lines = [` Total: ${v.toFixed(2)}%${ppDelta(v, allD?.share, i)}`];
               if (!isW) {
-                const kav = kaD?.share?.[i];
-                const ltv = ltD?.share?.[i];
-                if (kav != null) lines.push(` KA: ${kav.toFixed(2)}%${ppDelta(kav, kaD.share, i)}`);
-                if (ltv != null) lines.push(` LT: ${ltv.toFixed(2)}%${ppDelta(ltv, ltD.share, i)}`);
+                const nltv = nltD?.share?.[i];
+                const ltv  = ltD?.share?.[i];
+                if (nltv != null) lines.push(` No LT: ${nltv.toFixed(2)}%${ppDelta(nltv, nltD.share, i)}`);
+                if (ltv  != null) lines.push(` LT: ${ltv.toFixed(2)}%${ppDelta(ltv, ltD.share, i)}`);
               }
               return lines;
             }
@@ -1076,11 +1076,11 @@ function renderNmv(site, gran='monthly') {
     anchor:'center', align:'center', clamp:true,
   };
 
-  if (!isW && kaD && ltD) {
+  if (!isW && nltD && ltD) {
     mkChart(`nmv-nmv-${site}`, {
       type: 'bar',
       data: { labels, datasets: [
-        { label:'KA', data:kaD.nmv, backgroundColor:'#059669',
+        { label:'No LT', data:nltD.nmv, backgroundColor:'#059669',
           borderRadius:0, borderSkipped:false, stack:'s', order:2, datalabels:dlBar },
         { label:'LT', data:ltD.nmv, backgroundColor:'#86EFAC',
           borderRadius:3, borderSkipped:false, stack:'s', order:2, datalabels:dlBar },
@@ -1137,8 +1137,8 @@ function renderNmv(site, gran='monthly') {
     borderColor:'#111827', backgroundColor:'transparent',
     tension:.4, pointRadius:3, borderWidth:2.5, datalabels:{display:false},
   });
-  if (!isW && kaD?.npa?.some(v => v != null)) npaDs.push({
-    label:'KA', data:kaD.npa,
+  if (!isW && nltD?.npa?.some(v => v != null)) npaDs.push({
+    label:'No LT', data:nltD.npa,
     borderColor:'#059669', backgroundColor:'transparent',
     tension:.4, pointRadius:3, borderWidth:1.5, datalabels:{display:false},
   });
@@ -2657,7 +2657,7 @@ function buildPage(site) {
         <div class="card-sub">Evolución del aporte del programa de afiliados al NMV total del sitio</div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <span style="font-size:9px;color:#9CA3AF" title="KA incluye Key Accounts core, Content y Corporate">KA incluye Content y Corporate</span>
+        <span style="font-size:9px;color:#9CA3AF" title="No LT = KA + Content + Corporate + cualquier otro segmento">No LT = todo excepto Long Tail</span>
       </div>
     </div>
     <div class="grid-3">
@@ -3331,16 +3331,16 @@ beh AS (
 seg AS (
   SELECT DATE_TRUNC(CAST(DT AS DATE), MONTH) AS mes, SIT_SITE_ID,
     CASE
-      WHEN SEGMENT = 'Key Accounts' THEN 'ka'
-      WHEN SEGMENT = 'Long Tail'    THEN 'lt'
+      WHEN SEGMENT = 'Long Tail' THEN 'lt'
+      ELSE 'nlt'
     END AS seg,
     SUM(NMV_AFF) AS nmv_aff,
-    COUNT(DISTINCT IF(CUS_CUST_ID_AFF > 0, CUS_CUST_ID_AFF, NULL)) AS ka_ct
+    COUNT(DISTINCT IF(CUS_CUST_ID_AFF > 0, CUS_CUST_ID_AFF, NULL)) AS nlt_ct
   FROM \`meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE\`
   WHERE CAST(DT AS DATE) >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
-  GROUP BY 1,2,3 HAVING seg IS NOT NULL
+  GROUP BY 1,2,3
 )
--- Segmentos KA/LT/Content/Corporate — NPA denominador = active_aff total (behaviour)
+-- Segmentos No LT / LT — NPA denominador = active_aff total (behaviour)
 SELECT s.mes, s.SIT_SITE_ID, s.seg,
   s.nmv_aff,
   t.nmv_ts,
@@ -4125,7 +4125,7 @@ function processLinksMonthly(rows) {
 }
 
 function processNmv(monRows, wkRows, mtdRows) {
-  const SEGS = ['all','ka','lt'];
+  const SEGS = ['all','nlt','lt'];
   ['MLB','MLM','MLC','MLA'].forEach(site => {
     const unit = NMV_UNITS[site];
     // divisor to convert to display units (millions / billions)
@@ -4346,7 +4346,7 @@ function addCurrentMonthPoints() {
     }
 
     // ── NMV — BQ segments (populated after GAS loads) ──
-    const SEGS = ['all','ka','lt'];
+    const SEGS = ['all','nlt','lt'];
     SEGS.forEach(seg => {
       const ns = DATA[site].nmv_segs?.[seg];
       if (!ns?.mon) return;
