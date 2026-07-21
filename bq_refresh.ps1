@@ -712,11 +712,20 @@ monthly_links AS (
   FROM all_links
   GROUP BY 1, 2
 ),
-beh AS (
-  SELECT sit_site_id AS site, dt AS mes, active_aff
-  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_BEHAVIOUR`
-  WHERE period = 'MONTH' AND sit_site_id IN ('MLB','MLM','MLC','MLA')
-    AND dt >= '${D.HIST}'
+-- Afiliados que generaron links Y tuvieron venta en el mismo mes
+link_sellers AS (
+  SELECT al.site, DATE_TRUNC(al.ds, MONTH) AS mes,
+    COUNT(DISTINCT al.user_id) AS link_sellers
+  FROM all_links al
+  INNER JOIN `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s
+    ON SAFE_CAST(al.user_id AS INT64) = s.AFFILIATE_ID
+    AND al.site = s.SIT_SITE_ID
+    AND DATE_TRUNC(al.ds, MONTH) = DATE_TRUNC(DATE(s.ORD_CREATED_DT), MONTH)
+  WHERE s.ORD_STATUS = 'paid' AND s.SIT_SITE_ID = s.AFFILIATE_SIT_SITE_ID
+    AND s.ORD_CREATED_DT >= '${D.HIST}' AND s.ORD_CREATED_DT < '${D.CUR}'
+    AND ((s.ORD_CREATED_DT >= '${D.ENIGMA}' AND s.NMV_ENIGMA_TOTAL_AMT_LC > 0)
+      OR (s.ORD_CREATED_DT < '${D.ENIGMA}' AND s.NMV_TD7DCALIB_TOTAL_AMT_LC > 0))
+  GROUP BY 1, 2
 )
 SELECT
   ml.site AS site_id,
@@ -724,10 +733,10 @@ SELECT
   ml.link_users,
   ml.total_links,
   ROUND(SAFE_DIVIDE(ml.total_links, ml.link_users), 1) AS links_per_user,
-  b.active_aff,
-  ROUND(SAFE_DIVIDE(b.active_aff, ml.link_users) * 100, 1) AS cvr
+  ls.link_sellers,
+  ROUND(SAFE_DIVIDE(ls.link_sellers, ml.link_users) * 100, 1) AS cvr
 FROM monthly_links ml
-LEFT JOIN beh b ON ml.site = b.site AND ml.mes = b.mes
+LEFT JOIN link_sellers ls ON ml.site = ls.site AND ml.mes = ls.mes
 ORDER BY site_id, mes
 '@
 
