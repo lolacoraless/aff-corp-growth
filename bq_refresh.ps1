@@ -586,6 +586,36 @@ FROM seg GROUP BY 1,2 ORDER BY SITE_ID, mes_reg
 '@
 
 
+$sqlMap["act_new_days"] = d @'
+WITH register AS (
+  SELECT USER_ID, SITE_ID,
+    DATE(TIMESTAMP_SUB(TIMESTAMP(DATE_REGISTER), INTERVAL 4 HOUR)) AS date_reg_adj
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_AFFILIATE`
+  WHERE DATE_REGISTER >= '${D.HIST}' AND SITE_ID IN ('MLB','MLM','MLC','MLA')
+),
+first_sale AS (
+  SELECT SIT_SITE_ID, AFFILIATE_ID,
+    DATE_TRUNC(MIN(ORD_CREATED_DT), MONTH) AS mes_primera_venta,
+    MIN(ORD_CREATED_DT) AS first_sale_dt
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
+  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_STATUS='paid'
+    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.HIST}'
+    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)
+      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))
+  GROUP BY 1, 2
+)
+SELECT r.SITE_ID, f.mes_primera_venta AS mes,
+  COUNT(DISTINCT r.USER_ID) AS total_new,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) = 0)     / COUNT(*) * 100, 1) AS pct_d0,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) BETWEEN 1  AND 7)  / COUNT(*) * 100, 1) AS pct_d1_7,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) BETWEEN 8  AND 30) / COUNT(*) * 100, 1) AS pct_d8_30,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) BETWEEN 31 AND 60) / COUNT(*) * 100, 1) AS pct_d31_60,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) > 60)              / COUNT(*) * 100, 1) AS pct_d60p
+FROM register r
+INNER JOIN first_sale f ON r.USER_ID = f.AFFILIATE_ID AND r.SITE_ID = f.SIT_SITE_ID
+GROUP BY 1, 2 ORDER BY SITE_ID, mes
+'@
+
 $sqlMap["churn"] = d @'
 WITH monthly_active AS (
   SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT,MONTH) AS month, AFFILIATE_ID
@@ -794,7 +824,8 @@ $data = [ordered]@{
     nmv_pacing      = (Parse-BQResult $rawResults["nmv_pacing"].json)
     data_freshness  = (Parse-BQResult $rawResults["data_freshness"].json)
     act1            = (Parse-BQResult $rawResults["act1"].json)
-    act2          = (Parse-BQResult $rawResults["act2"].json)
+    act2            = (Parse-BQResult $rawResults["act2"].json)
+    act_new_days    = (Parse-BQResult $rawResults["act_new_days"].json)
     churn         = (Parse-BQResult $rawResults["churn"].json)
     churn_comp    = (Parse-BQResult $rawResults["churn_comp"].json)
     churn_mtd     = (Parse-BQResult $rawResults["churn_mtd"].json)
@@ -807,7 +838,7 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
 @('behaviour','beh_mtd','beh_pacing','qr_rolling','registrations','reg_mtd',
   'reg_pacing','landing_traffic','landing_pacing','spend_pom',
   'nmv_monthly','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
-  'act1','act2','churn','churn_comp','churn_mtd') | ForEach-Object {
+  'act1','act2','act_new_days','churn','churn_comp','churn_mtd') | ForEach-Object {
     $snapshotJson = $snapshotJson.Replace("`"$_`":null", "`"$_`":[]")
 }
 
