@@ -593,14 +593,23 @@ WITH reg_src AS (
     SITE_ID,
     DATE_TRUNC(DATE(ds), MONTH) AS mes_reg,
     CASE
-      WHEN UPPER(origen_grouped) = 'POM'    THEN 'pom'
-      WHEN UPPER(origen_grouped) = 'DIRECT' THEN 'direct'
+      WHEN LOWER(origen_grouped) LIKE 'pom%'
+        OR LOWER(origen_grouped) IN ('paid media','tiktok','facebook','google','instagram','twitter','youtube','paid','x')
+      THEN 'pom'
+      WHEN LOWER(origen_grouped) LIKE 'direct%'
+        OR LOWER(origen_grouped) IN ('app','web')
+      THEN 'direct'
       ELSE NULL
     END AS canal
   FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`
   WHERE DATE(ds) >= '${D.HIST}'
     AND SITE_ID IN ('MLB','MLM','MLC','MLA')
-    AND UPPER(origen_grouped) IN ('POM','DIRECT')
+    AND (
+      LOWER(origen_grouped) LIKE 'pom%'
+      OR LOWER(origen_grouped) IN ('paid media','tiktok','facebook','google','instagram','twitter','youtube','paid','x')
+      OR LOWER(origen_grouped) LIKE 'direct%'
+      OR LOWER(origen_grouped) IN ('app','web')
+    )
 ),
 first_sale AS (
   SELECT SIT_SITE_ID, AFFILIATE_ID,
