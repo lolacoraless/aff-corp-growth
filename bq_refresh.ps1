@@ -662,6 +662,76 @@ INNER JOIN first_sale f ON r.USER_ID = f.AFFILIATE_ID AND r.SITE_ID = f.SIT_SITE
 GROUP BY 1, 2 ORDER BY SITE_ID, mes
 '@
 
+$sqlMap["links_monthly"] = d @'
+WITH pre_users AS (
+  SELECT user_id, site, MIN(ds) AS first_seen_ds
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE`
+  WHERE ds BETWEEN '2026-01-08' AND '2026-01-14'
+    AND site IN ('MLB','MLM','MLC','MLA') AND path = '/share/show_header'
+    AND JSON_EXTRACT_SCALAR(event_data, '$.banner_type') = 'commission'
+  GROUP BY ALL
+),
+share_pre AS (
+  SELECT t.ds, t.site, t.user_id, COUNT(*) AS links
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE` t
+  INNER JOIN pre_users u ON u.user_id = t.user_id AND t.ds >= u.first_seen_ds
+  WHERE t.ds BETWEEN '2026-01-08' AND '2026-01-14'
+    AND t.site IN ('MLB','MLM','MLC','MLA') AND t.path = '/share/action'
+  GROUP BY ALL
+),
+share_pos AS (
+  SELECT ds, site, user_id, COUNT(*) AS links
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE`
+  WHERE ds >= '2026-01-15' AND site IN ('MLB','MLM','MLC','MLA') AND path = '/share/action'
+    AND JSON_EXTRACT_SCALAR(event_data, '$.user_type') = 'affiliates'
+  GROUP BY ALL
+),
+stripe_hub AS (
+  SELECT ds, site, user_id, COUNT(*) AS links
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO`
+  WHERE ds >= '2025-10-01' AND site IN ('MLB','MLM','MLC','MLA')
+    AND (
+      path IN ('/affiliates/stripe/link', '/affiliates/linkbuilder/v1/generate')
+      OR path IN ('/affiliates/stripe_webview/copy_link', '/affiliates/stripe_webview/share_link')
+      OR (path = '/affiliates/hub/share/select'
+          AND JSON_EXTRACT_SCALAR(event_data, '$.select_value') IN ('copy_link','copy_id'))
+    )
+  GROUP BY ALL
+),
+all_links AS (
+  SELECT ds, site, user_id, links FROM share_pre
+  UNION ALL SELECT ds, site, user_id, links FROM share_pos
+  UNION ALL SELECT ds, site, user_id, links FROM stripe_hub
+),
+monthly_links AS (
+  SELECT
+    site,
+    DATE_TRUNC(ds, MONTH) AS mes,
+    COUNT(DISTINCT user_id) AS link_users,
+    SUM(links) AS total_links
+  FROM all_links
+  WHERE ds >= '${D.HIST}'
+  GROUP BY 1, 2
+),
+beh AS (
+  SELECT sit_site_id AS site, dt AS mes, active_aff
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_BEHAVIOUR`
+  WHERE period = 'MONTH' AND sit_site_id IN ('MLB','MLM','MLC','MLA')
+    AND dt >= '${D.HIST}'
+)
+SELECT
+  ml.site AS site_id,
+  ml.mes,
+  ml.link_users,
+  ml.total_links,
+  ROUND(SAFE_DIVIDE(ml.total_links, ml.link_users), 1) AS links_per_user,
+  b.active_aff,
+  ROUND(SAFE_DIVIDE(b.active_aff, ml.link_users) * 100, 1) AS cvr
+FROM monthly_links ml
+LEFT JOIN beh b ON ml.site = b.site AND ml.mes = b.mes
+ORDER BY site_id, mes
+'@
+
 $sqlMap["churn"] = d @'
 WITH monthly_active AS (
   SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT,MONTH) AS month, AFFILIATE_ID
@@ -873,6 +943,7 @@ $data = [ordered]@{
     act2            = (Parse-BQResult $rawResults["act2"].json)
     act_source      = (Parse-BQResult $rawResults["act_source"].json)
     act_new_days    = (Parse-BQResult $rawResults["act_new_days"].json)
+    links_monthly   = (Parse-BQResult $rawResults["links_monthly"].json)
     churn         = (Parse-BQResult $rawResults["churn"].json)
     churn_comp    = (Parse-BQResult $rawResults["churn_comp"].json)
     churn_mtd     = (Parse-BQResult $rawResults["churn_mtd"].json)
@@ -885,7 +956,7 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
 @('behaviour','beh_mtd','beh_pacing','qr_rolling','registrations','reg_mtd',
   'reg_pacing','landing_traffic','landing_pacing','spend_pom',
   'nmv_monthly','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
-  'act1','act2','act_source','act_new_days','churn','churn_comp','churn_mtd') | ForEach-Object {
+  'act1','act2','act_source','act_new_days','links_monthly','churn','churn_comp','churn_mtd') | ForEach-Object {
     $snapshotJson = $snapshotJson.Replace("`"$_`":null", "`"$_`":[]")
 }
 

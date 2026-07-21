@@ -2390,6 +2390,77 @@ function renderAct(site) {
 // ═══════════════════════════════════════════════════════
 // CHURN
 // ═══════════════════════════════════════════════════════
+function renderActivity(site) {
+  const d = DATA[site].activity;
+  if (!d || !(d.link_users?.length)) return;
+  const n = 6;
+  const months = DATA[site].months.slice(-n);
+  const linkUsers    = (d.link_users     ?? []).slice(-n);
+  const cvr          = (d.cvr            ?? []).slice(-n);
+  const linksPerUser = (d.links_per_user ?? []).slice(-n);
+
+  // Chart 1: users generating links (bars) + CVR % (line)
+  mkChart(`act-lnk1-${site}`, {
+    type:'bar',
+    data:{labels:months, datasets:[
+      {label:'Usuarios generando links', data:linkUsers,
+       backgroundColor:'rgba(52,131,250,0.75)', borderRadius:3, order:2,
+       datalabels:{display:false}},
+      {label:'CVR % →', data:cvr, type:'line', yAxisID:'ypct',
+       borderColor:C.green, backgroundColor:'transparent',
+       borderWidth:2, pointRadius:3, tension:.4, order:1,
+       datalabels:{display:false}},
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:baseLegend(10),
+        tooltip:{
+          mode:'index', intersect:false,
+          callbacks:{label:ctx=>{
+            if(ctx.dataset.yAxisID==='ypct')
+              return ` CVR: ${ctx.raw != null ? ctx.raw+'%' : '—'}`;
+            return ` Usuarios: ${fmt(ctx.raw)}`;
+          }},
+        },
+      },
+      scales:{
+        x:{grid:{display:false},ticks:{font:{size:10},maxRotation:40}},
+        y:{grid:{color:'#F3F4F7'},ticks:{font:{size:10},callback:v=>fmt(v)}},
+        ypct:{position:'right',grid:{display:false},
+          ticks:{font:{size:9.5},color:C.green,callback:v=>v+'%'},
+          title:{display:true,text:'CVR →',color:C.green,font:{size:9.5}},
+          suggestedMin:0, suggestedMax:50},
+      },
+    },
+  });
+
+  // Chart 2: links per affiliate
+  mkChart(`act-lnk2-${site}`, {
+    type:'bar',
+    data:{labels:months, datasets:[
+      {label:'Links por afiliado', data:linksPerUser,
+       backgroundColor:'rgba(139,92,246,0.75)', borderRadius:3,
+       datalabels:{
+         display:true, anchor:'end', align:'end',
+         formatter:v=>v!=null?v.toFixed(1):'', font:{size:9.5},
+         color:'#6D28D9',
+       }},
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:baseLegend(10),
+        tooltip:{callbacks:{label:ctx=>` ${ctx.raw != null ? ctx.raw.toFixed(1) : '—'} links/aff`}},
+      },
+      scales:{
+        x:{grid:{display:false},ticks:{font:{size:10},maxRotation:40}},
+        y:{grid:{color:'#F3F4F7'},ticks:{font:{size:10}},suggestedMin:0},
+      },
+    },
+  });
+}
+
 function renderChurn(site, gran='monthly') {
   const d = DATA[site].churn;
   const isW = gran === 'weekly';
@@ -2743,6 +2814,30 @@ function buildPage(site) {
       <div class="chart-wrap sm"><canvas id="act2-${site}"></canvas></div>    </div>
   </div>
 
+  <!-- ══════════ ACTIVIDAD ══════════ -->
+  <div class="sec-lbl">🔗 Actividad <button class="qry-btn" onclick="showQuery('links_monthly')">{ SQL }</button></div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Usuarios generando links</div>
+          <div class="card-sub">Afiliados únicos que generaron al menos 1 link en el mes · últimos 6 meses</div>
+        </div>
+      </div>
+      <div class="chart-wrap sm"><canvas id="act-lnk1-${site}"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Links por afiliado</div>
+          <div class="card-sub">Total links generados / afiliados que generaron links en el mes · últimos 6 meses</div>
+        </div>
+      </div>
+      <div class="chart-wrap sm"><canvas id="act-lnk2-${site}"></canvas></div>
+    </div>
+  </div>
+
   <!-- ══════════ CHURN ══════════ -->
   <div class="sec-lbl">🔴 Churn <button class="qry-btn" onclick="showQuery('churn')">{ SQL }</button></div>
   ${freshTag(FRESHNESS.dateChu)}
@@ -2952,6 +3047,7 @@ function renderSite(site) {
     renderTraffic(site, 'monthly', 'all');
     renderReg(site, 'monthly');
     renderAct(site);
+    renderActivity(site);
     renderChurn(site, 'monthly');
     rendered.add(site);
   }, 0);
@@ -3372,6 +3468,76 @@ SELECT SITE_ID, mes_reg, COUNT(*) AS total,
   ROUND(COUNTIF(cohort='d46p') / COUNT(*) * 100, 1) AS pct_d46p,
   ROUND(COUNTIF(cohort='no_act')/ COUNT(*) * 100, 1) AS pct_no_act
 FROM seg GROUP BY 1,2 ORDER BY SITE_ID, mes_reg`;
+
+// ── ACTIVIDAD — Links generados por afiliados ────────────────────────────────
+Q.LINKS_MONTHLY = `
+WITH pre_users AS (
+  SELECT user_id, site, MIN(ds) AS first_seen_ds
+  FROM \`meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE\`
+  WHERE ds BETWEEN '2026-01-08' AND '2026-01-14'
+    AND site IN ('MLB','MLM','MLC','MLA') AND path = '/share/show_header'
+    AND JSON_EXTRACT_SCALAR(event_data, '$.banner_type') = 'commission'
+  GROUP BY ALL
+),
+share_pre AS (
+  SELECT t.ds, t.site, t.user_id, COUNT(*) AS links
+  FROM \`meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE\` t
+  INNER JOIN pre_users u ON u.user_id = t.user_id AND t.ds >= u.first_seen_ds
+  WHERE t.ds BETWEEN '2026-01-08' AND '2026-01-14'
+    AND t.site IN ('MLB','MLM','MLC','MLA') AND t.path = '/share/action'
+  GROUP BY ALL
+),
+share_pos AS (
+  SELECT ds, site, user_id, COUNT(*) AS links
+  FROM \`meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE\`
+  WHERE ds >= '2026-01-15' AND site IN ('MLB','MLM','MLC','MLA') AND path = '/share/action'
+    AND JSON_EXTRACT_SCALAR(event_data, '$.user_type') = 'affiliates'
+  GROUP BY ALL
+),
+stripe_hub AS (
+  SELECT ds, site, user_id, COUNT(*) AS links
+  FROM \`meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO\`
+  WHERE ds >= '2025-10-01' AND site IN ('MLB','MLM','MLC','MLA')
+    AND (
+      path IN ('/affiliates/stripe/link', '/affiliates/linkbuilder/v1/generate')
+      OR path IN ('/affiliates/stripe_webview/copy_link', '/affiliates/stripe_webview/share_link')
+      OR (path = '/affiliates/hub/share/select'
+          AND JSON_EXTRACT_SCALAR(event_data, '$.select_value') IN ('copy_link','copy_id'))
+    )
+  GROUP BY ALL
+),
+all_links AS (
+  SELECT ds, site, user_id, links FROM share_pre
+  UNION ALL SELECT ds, site, user_id, links FROM share_pos
+  UNION ALL SELECT ds, site, user_id, links FROM stripe_hub
+),
+monthly_links AS (
+  SELECT
+    site,
+    DATE_TRUNC(ds, MONTH) AS mes,
+    COUNT(DISTINCT user_id) AS link_users,
+    SUM(links) AS total_links
+  FROM all_links
+  WHERE ds >= '\${D.HIST}'
+  GROUP BY 1, 2
+),
+beh AS (
+  SELECT sit_site_id AS site, dt AS mes, active_aff
+  FROM \`meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_BEHAVIOUR\`
+  WHERE period = 'MONTH' AND sit_site_id IN ('MLB','MLM','MLC','MLA')
+    AND dt >= '\${D.HIST}'
+)
+SELECT
+  ml.site AS site_id,
+  ml.mes,
+  ml.link_users,
+  ml.total_links,
+  ROUND(SAFE_DIVIDE(ml.total_links, ml.link_users), 1) AS links_per_user,
+  b.active_aff,
+  ROUND(SAFE_DIVIDE(b.active_aff, ml.link_users) * 100, 1) AS cvr
+FROM monthly_links ml
+LEFT JOIN beh b ON ml.site = b.site AND ml.mes = b.mes
+ORDER BY site_id, mes`;
 
 // ── 11. CHURN — % churneados nuevos / activos mes anterior ───────────────────
 Q.CHURN = `
@@ -4106,6 +4272,20 @@ function processActNewDays(rows) {
   });
 }
 
+function processLinksMonthly(rows) {
+  if (!rows || !rows.length) return;
+  ['MLB','MLM','MLC','MLA'].forEach(site => {
+    const sr = rows.filter(r => r.site_id === site)
+                   .sort((a,b) => String(a.mes).localeCompare(String(b.mes)));
+    if (!sr.length) return;
+    DATA[site].activity = {
+      link_users:     sr.map(r => r.link_users),
+      cvr:            sr.map(r => r.cvr),
+      links_per_user: sr.map(r => r.links_per_user),
+    };
+  });
+}
+
 function processChurn(churnRows, compRows, mtdRows) {
   ['MLB','MLM','MLC','MLA'].forEach(site => {
     const cr = churnRows.filter(r => r.sit_site_id === site)
@@ -4326,6 +4506,7 @@ async function autoLoadFromGAS() {
     if (data.act1 && data.act2)
                            processActivation(data.act1, data.act2, data.act_source);
     if (data.act_new_days) processActNewDays(data.act_new_days);
+    if (data.links_monthly) processLinksMonthly(data.links_monthly);
     if (data.churn && data.churn_comp && data.churn_mtd)
                            processChurn(data.churn, data.churn_comp, data.churn_mtd);
 
@@ -4420,6 +4601,7 @@ async function loadSnapshot() {
     if (d.nmv_pacing)                            processNmvPacing(d.nmv_pacing);
     if (d.act1 && d.act2)                        processActivation(d.act1, d.act2, d.act_source);
     if (d.act_new_days)                          processActNewDays(d.act_new_days);
+    if (d.links_monthly)                         processLinksMonthly(d.links_monthly);
     if (d.churn && d.churn_comp && d.churn_mtd)  processChurn(d.churn, d.churn_comp, d.churn_mtd);
 
     addCurrentMonthPoints();
@@ -4470,6 +4652,7 @@ async function loadSnapshot() {
         if (d.nmv_pacing)   processNmvPacing(d.nmv_pacing);
         if (d.act1 && d.act2) processActivation(d.act1, d.act2, d.act_source);
         if (d.act_new_days)   processActNewDays(d.act_new_days);
+        if (d.links_monthly)  processLinksMonthly(d.links_monthly);
         if (d.churn && d.churn_comp && d.churn_mtd)
                             processChurn(d.churn, d.churn_comp, d.churn_mtd);
         addCurrentMonthPoints();
@@ -4570,6 +4753,13 @@ const QUERY_DEFS = {
     subtitle: 'AFFILIATE_AFFILIATE · BT_AFFI_SALES_ATTRIBUTION_DAILY',
     tabs: [
       { label: 'Cohortes',  desc: 'Tiempo desde registro hasta primera venta por cohorte mensual y canal de registro.', getQ: () => Q.ACTIVATION_COHORTS },
+    ]
+  },
+  links_monthly: {
+    title: '🔗 Actividad · Links generados',
+    subtitle: 'ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE · ETL_AFFILIATE_TRACKS_PRODUCTO',
+    tabs: [
+      { label: 'Mensual', desc: 'Afiliados únicos que generaron links, total de links, links por afiliado y CVR vs activos — por mes y site.', getQ: () => Q.LINKS_MONTHLY },
     ]
   },
   churn: {
