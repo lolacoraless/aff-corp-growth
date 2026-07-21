@@ -682,14 +682,14 @@ share_pre AS (
 share_pos AS (
   SELECT ds, site, user_id, COUNT(*) AS links
   FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE`
-  WHERE ds >= '2026-01-15' AND site IN ('MLB','MLM','MLC','MLA') AND path = '/share/action'
+  WHERE ds >= '2026-01-15' AND ds < '${D.CUR}' AND site IN ('MLB','MLM','MLC','MLA') AND path = '/share/action'
     AND JSON_EXTRACT_SCALAR(event_data, '$.user_type') = 'affiliates'
   GROUP BY ALL
 ),
 stripe_hub AS (
   SELECT ds, site, user_id, COUNT(*) AS links
   FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO`
-  WHERE ds >= '2025-10-01' AND site IN ('MLB','MLM','MLC','MLA')
+  WHERE ds >= '${D.HIST}' AND ds < '${D.CUR}' AND site IN ('MLB','MLM','MLC','MLA')
     AND (
       path IN ('/affiliates/stripe/link', '/affiliates/linkbuilder/v1/generate')
       OR path IN ('/affiliates/stripe_webview/copy_link', '/affiliates/stripe_webview/share_link')
@@ -710,7 +710,6 @@ monthly_links AS (
     COUNT(DISTINCT user_id) AS link_users,
     SUM(links) AS total_links
   FROM all_links
-  WHERE ds >= '${D.HIST}'
   GROUP BY 1, 2
 ),
 beh AS (
