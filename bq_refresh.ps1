@@ -420,15 +420,16 @@ beh AS (
 seg AS (
   SELECT DATE_TRUNC(CAST(DT AS DATE),MONTH) AS mes, SIT_SITE_ID,
     CASE WHEN SEGMENT IN ('KAM','Potential KAM') THEN 'nlt' ELSE 'lt' END AS seg,
-    SUM(NMV_AFF) AS nmv_aff
+    SUM(NMV_AFF) AS nmv_aff,
+    COUNT(DISTINCT AFFILIATE_ID) AS active_aff_seg
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
   WHERE CAST(DT AS DATE) >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
   GROUP BY 1,2,3
 )
 SELECT s.mes, s.SIT_SITE_ID, s.seg, s.nmv_aff, t.nmv_ts,
   SAFE_DIVIDE(s.nmv_aff,t.nmv_ts) AS share_ts,
-  b.active_aff, SAFE_DIVIDE(s.nmv_aff,b.active_aff) AS npa
-FROM seg s JOIN ts t USING(mes,SIT_SITE_ID) JOIN beh b USING(mes,SIT_SITE_ID)
+  s.active_aff_seg AS active_aff, SAFE_DIVIDE(s.nmv_aff, s.active_aff_seg) AS npa
+FROM seg s JOIN ts t USING(mes,SIT_SITE_ID)
 UNION ALL
 SELECT t.mes, t.SIT_SITE_ID, 'all' AS seg, t.nmv_aff_total AS nmv_aff, t.nmv_ts,
   SAFE_DIVIDE(t.nmv_aff_total,t.nmv_ts) AS share_ts,
