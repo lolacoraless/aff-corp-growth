@@ -4432,11 +4432,16 @@ function processMktContext(rows) {
       sessions:      mtdSes ? +mtdSes.value    : null,
       sessions_prev: mtdSes ? +mtdSes.value_cp : null,
     };
-    // Append current MTD month as last bar in chart
+    // Ensure current month uses MTD value in chart (MONTHLY row may exist but be null/partial)
     if (mtdNmv && mtdNmv.dt_to && DATA[site].mkt.months) {
       const dtMtd = new Date(mtdNmv.dt_to + 'T12:00:00');
       const mtdLabel = MON_NAMES_ES[dtMtd.getMonth()] + ' ' + String(dtMtd.getFullYear()).slice(2);
-      if (!DATA[site].mkt.months.includes(mtdLabel)) {
+      const existIdx = DATA[site].mkt.months.indexOf(mtdLabel);
+      if (existIdx >= 0) {
+        // MONTHLY row exists for current month but value may be null — overwrite with MTD
+        if (DATA[site].mkt.mon.nmv) DATA[site].mkt.mon.nmv[existIdx] = +mtdNmv.value;
+        if (DATA[site].mkt.mon.sessions) DATA[site].mkt.mon.sessions[existIdx] = mtdSes ? +mtdSes.value : null;
+      } else {
         DATA[site].mkt.months.push(mtdLabel);
         (DATA[site].mkt.mon.nmv = DATA[site].mkt.mon.nmv || []).push(+mtdNmv.value);
         (DATA[site].mkt.mon.sessions = DATA[site].mkt.mon.sessions || []).push(mtdSes ? +mtdSes.value : null);
