@@ -373,7 +373,7 @@ WITH raw AS (
          WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLM_') THEN 'MLM'
          WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLA_') THEN 'MLA'
          WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLC_') THEN 'MLC' END AS site_id,
-    DATE_TRUNC(tim_day, MONTH) AS month_id, COST_LC
+    DATE_TRUNC(tim_day, MONTH) AS month_id, tim_day, COST_LC
   FROM `meli-bi-data.SBOX_MARKETING.BT_COST_GOOGLE_DAILY`
   WHERE account_id IN (5569824421,8633263195,2507743500,2902742417)
     AND tim_day >= '${D.HIST}'
@@ -383,7 +383,7 @@ WITH raw AS (
          WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLM_') THEN 'MLM'
          WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLA_') THEN 'MLA'
          WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLC_') THEN 'MLC' END AS site_id,
-    DATE_TRUNC(TIM_DAY, MONTH) AS month_id, COST_LC
+    DATE_TRUNC(TIM_DAY, MONTH) AS month_id, TIM_DAY AS tim_day, COST_LC
   FROM `meli-bi-data.SBOX_MARKETING.BT_COST_FACEBOOK_DAILY`
   WHERE account_id IN (993018982140477,389685073604722,720409463494481,978457163701915,1049740082792804)
     AND TIM_DAY >= '${D.HIST}'
@@ -393,16 +393,26 @@ WITH raw AS (
          WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLM_') THEN 'MLM'
          WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLA_') THEN 'MLA'
          WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLC_') THEN 'MLC' END AS site_id,
-    DATE_TRUNC(EVENT_DATE, MONTH) AS month_id, SPEND_LC AS COST_LC
+    DATE_TRUNC(EVENT_DATE, MONTH) AS month_id, EVENT_DATE AS tim_day, SPEND_LC AS COST_LC
   FROM `meli-bi-data.SBOX_MARKETING.BT_COST_TIKTOK_DAILY`
   WHERE advertiser_id IN (7296191154461114370,7356731484117663745,7520663504987226129)
     AND EVENT_DATE >= '${D.HIST}'
 )
-SELECT site_id, month_id,
-  IF(month_id = '${D.CUR}', 'mtd', 'hist') AS period,
-  ROUND(SUM(COST_LC),2) AS cost_lc
-FROM raw WHERE site_id IN ('MLB','MLM','MLC','MLA')
-GROUP BY 1,2,3 ORDER BY site_id, month_id
+base AS (
+  SELECT site_id, month_id,
+    IF(month_id = '${D.CUR}', 'mtd', 'hist') AS period,
+    ROUND(SUM(COST_LC),2) AS cost_lc
+  FROM raw WHERE site_id IN ('MLB','MLM','MLC','MLA')
+  GROUP BY 1,2,3
+)
+SELECT * FROM base
+UNION ALL
+SELECT site_id, month_id, 'prev_mtd' AS period, ROUND(SUM(COST_LC),2) AS cost_lc
+FROM raw
+WHERE site_id IN ('MLB','MLM','MLC','MLA')
+  AND month_id = '${D.PREV}' AND tim_day <= '${D.PREV_DAY}'
+GROUP BY 1,2
+ORDER BY site_id, month_id, period
 '@
 
 $sqlMap["nmv_monthly"] = d @'
@@ -476,7 +486,7 @@ lt AS (
     SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_AFF ELSE 0 END) AS lt_nmv_prev
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
   WHERE CAST(DT AS DATE) >= '${D.PREV}'
-    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND SEGMENT='Long Tail' GROUP BY 1
+    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND SEGMENT NOT IN ('KAM','Potential KAM') GROUP BY 1
 )
 SELECT t.SIT_SITE_ID, t.nmv_curr, t.ts_curr, t.nmv_prev, t.ts_prev,
   l.lt_nmv_curr, l.lt_nmv_prev
@@ -759,17 +769,24 @@ flagged AS (
 metrics AS (
   SELECT prev.SIT_SITE_ID, DATE_ADD(prev.month,INTERVAL 1 MONTH) AS month,
     COUNT(DISTINCT prev.AFFILIATE_ID) AS active_prev,
-    COUNTIF(prev.is_new) AS new_prev,
     COUNT(DISTINCT IF(curr.AFFILIATE_ID IS NULL,prev.AFFILIATE_ID,NULL)) AS churned,
-    COUNT(DISTINCT IF(curr.AFFILIATE_ID IS NULL AND prev.is_new,prev.AFFILIATE_ID,NULL)) AS churned_new
+    COUNT(DISTINCT IF(curr.AFFILIATE_ID IS NULL AND prev.is_new=TRUE,prev.AFFILIATE_ID,NULL)) AS churned_new,
+    COUNT(DISTINCT IF(curr.AFFILIATE_ID IS NULL AND prev.is_new=FALSE AND m2.AFFILIATE_ID IS NULL,prev.AFFILIATE_ID,NULL)) AS churned_recovered,
+    COUNT(DISTINCT IF(curr.AFFILIATE_ID IS NULL AND prev.is_new=FALSE AND m2.AFFILIATE_ID IS NOT NULL,prev.AFFILIATE_ID,NULL)) AS churned_recurrent
   FROM flagged prev
   LEFT JOIN monthly_active curr
     ON prev.AFFILIATE_ID=curr.AFFILIATE_ID AND prev.SIT_SITE_ID=curr.SIT_SITE_ID
     AND curr.month=DATE_ADD(prev.month,INTERVAL 1 MONTH)
+  LEFT JOIN monthly_active m2
+    ON prev.AFFILIATE_ID=m2.AFFILIATE_ID AND prev.SIT_SITE_ID=m2.SIT_SITE_ID
+    AND m2.month=DATE_SUB(prev.month,INTERVAL 1 MONTH)
   GROUP BY 1,2
 )
-SELECT month, SIT_SITE_ID, active_prev, churned, churned_new,
-  ROUND(SAFE_DIVIDE(churned_new,active_prev)*100,2) AS pct_churn_new
+SELECT month, SIT_SITE_ID, active_prev, churned, churned_new, churned_recovered, churned_recurrent,
+  ROUND(SAFE_DIVIDE(churned_new,active_prev)*100,2) AS pct_churn_new,
+  ROUND(SAFE_DIVIDE(churned_new,churned)*100,1) AS pct_churned_new,
+  ROUND(SAFE_DIVIDE(churned_recovered,churned)*100,1) AS pct_churned_recovered,
+  ROUND(SAFE_DIVIDE(churned_recurrent,churned)*100,1) AS pct_churned_recurrent
 FROM metrics WHERE month >= '${D.HIST}' ORDER BY SIT_SITE_ID, month
 '@
 
@@ -849,6 +866,26 @@ SELECT SIT_SITE_ID,
   ROUND(SAFE_DIVIDE(COUNTIF(in_mar_full=1 AND in_prev=0 AND months_hist>=7),
     COUNTIF(in_mar_full=1 AND in_prev=0))*100,1) AS prev_pct_established
 FROM window_sales GROUP BY 1
+'@
+
+$sqlMap["mkt_context"] = @'
+SELECT
+  KPI_ID,
+  SIT_SITE_ID,
+  PERIOD,
+  FORMAT_DATE('%Y-%m-%d', DT_TO) AS dt_to,
+  SUM(VIZ.vl_num) AS value,
+  SUM(VIZ.vl_num_cp) AS value_cp
+FROM `meli-bi-data.WHOWNER.DM_MKT_KPI_STORE`
+WHERE KPI_ID IN ('NMV-UMM-MARKETPLACE', 'SESSIONS-AMPL')
+  AND SIT_SITE_ID IN ('MLB', 'MLM', 'MLC', 'MLA')
+  AND PERIOD IN ('MONTHLY', 'MTD')
+  AND COMPARISON = 'PP'
+  AND ((KPI_ID = 'NMV-UMM-MARKETPLACE' AND CURRENCY = 'LC')
+    OR (KPI_ID = 'SESSIONS-AMPL' AND CURRENCY = '-1'))
+  AND DT_TO >= '${D.HIST}'
+GROUP BY 1,2,3,4
+ORDER BY KPI_ID, SIT_SITE_ID, PERIOD, DT_TO
 '@
 
 # ==== LAUNCH ALL 17 JOBS IN PARALLEL =========================================
@@ -956,6 +993,7 @@ $data = [ordered]@{
     churn         = (Parse-BQResult $rawResults["churn"].json)
     churn_comp    = (Parse-BQResult $rawResults["churn_comp"].json)
     churn_mtd     = (Parse-BQResult $rawResults["churn_mtd"].json)
+    mkt_context   = (Parse-BQResult $rawResults["mkt_context"].json)
 }
 
 $snapshot = [ordered]@{ savedAt=$tsNow; savedAtDisplay=$dispNow; data=$data }
@@ -965,7 +1003,7 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
 @('behaviour','beh_mtd','beh_pacing','qr_rolling','registrations','reg_mtd',
   'reg_pacing','landing_traffic','landing_pacing','spend_pom',
   'nmv_monthly','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
-  'act1','act2','act_source','act_new_days','links_monthly','churn','churn_comp','churn_mtd') | ForEach-Object {
+  'act1','act2','act_source','act_new_days','links_monthly','churn','churn_comp','churn_mtd','mkt_context') | ForEach-Object {
     $snapshotJson = $snapshotJson.Replace("`"$_`":null", "`"$_`":[]")
 }
 

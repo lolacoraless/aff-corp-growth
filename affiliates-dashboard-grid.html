@@ -64,6 +64,23 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
   font-family:var(--font);letter-spacing:.2px;transition:all .15s;text-transform:none;flex-shrink:0}
 .qry-btn:hover{background:rgba(139,92,246,.35);border-color:#8B5CF6;color:#EDE9FE}
 
+/* COPY CHART BUTTON */
+.copy-chart-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(255,255,255,0.85);
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 5px;
+  opacity: 0.35;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.copy-chart-btn:hover { opacity: 1; }
+
 /* QUERY MODAL */
 .qry-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;
   display:none;align-items:flex-start;justify-content:center;padding:60px 20px 20px;overflow-y:auto}
@@ -563,6 +580,12 @@ const DATA = {
       mtd:      { share:4.3, nmv:29.0, npa:25.0 },
       mtd_prev: { share:4.1, nmv:27.0, npa:24.0 },
     },
+    mkt: {
+      months: [],
+      mon: { nmv: [], sessions: [] },
+      mtd: null,
+      mtd_prev: null,
+    },
   },
 
   MLM: {
@@ -662,6 +685,12 @@ const DATA = {
       },
       mtd:      { share:3.6, nmv:218, npa:187 },
       mtd_prev: { share:3.4, nmv:205, npa:183 },
+    },
+    mkt: {
+      months: [],
+      mon: { nmv: [], sessions: [] },
+      mtd: null,
+      mtd_prev: null,
     },
   },
 
@@ -763,6 +792,12 @@ const DATA = {
       mtd:      { share:3.1, nmv:0.85, npa:2.3 },
       mtd_prev: { share:2.9, nmv:0.80, npa:2.1 },
     },
+    mkt: {
+      months: [],
+      mon: { nmv: [], sessions: [] },
+      mtd: null,
+      mtd_prev: null,
+    },
   },
 
   MLA: {
@@ -862,6 +897,12 @@ const DATA = {
       mtd:      { share:2.3, nmv:13.5, npa:9.8 },
       mtd_prev: { share:2.1, nmv:12.5, npa:9.2 },
     },
+    mkt: {
+      months: [],
+      mon: { nmv: [], sessions: [] },
+      mtd: null,
+      mtd_prev: null,
+    },
   },
 };
 
@@ -869,11 +910,41 @@ const DATA = {
 // CHART REGISTRY
 // ═══════════════════════════════════════════════════════
 const CHARTS = {};
+function copyChartData(id) {
+  const chart = CHARTS[id];
+  if (!chart) return;
+  const labels = chart.data.labels || [];
+  const allDs = chart.data.datasets || [];
+  const header = [''].concat(allDs.map(d => d.label || '')).join('\t');
+  const rows = labels.map((lbl, i) => {
+    const vals = allDs.map(d => { const v = d.data[i]; return v == null ? '' : String(v); });
+    return [lbl, ...vals].join('\t');
+  });
+  const tsv = [header, ...rows].join('\n');
+  navigator.clipboard.writeText(tsv).then(() => {
+    const wrap = document.getElementById(id);
+    if (!wrap) return;
+    const btn = wrap.parentElement && wrap.parentElement.querySelector('.copy-chart-btn');
+    if (btn) { const o = btn.innerHTML; btn.innerHTML = '✓'; setTimeout(() => btn.innerHTML = o, 1200); }
+  }).catch(() => {});
+}
 function mkChart(id, cfg) {
   if (CHARTS[id]) { CHARTS[id].destroy(); delete CHARTS[id]; }
   const el = document.getElementById(id);
   if (!el) return null;
   CHARTS[id] = new Chart(el, cfg);
+  const wrap = el.parentElement;
+  if (wrap) {
+    wrap.style.position = 'relative';
+    const old = wrap.querySelector('.copy-chart-btn');
+    if (old) old.remove();
+    const btn = document.createElement('button');
+    btn.className = 'copy-chart-btn';
+    btn.title = 'Copiar datos al portapapeles';
+    btn.innerHTML = '📋';
+    btn.onclick = (e) => { e.stopPropagation(); copyChartData(id); };
+    wrap.appendChild(btn);
+  }
   return CHARTS[id];
 }
 
@@ -1644,8 +1715,11 @@ function trafficLabels(isW, site) { return isW ? W_8 : DATA[site].months; }
 function renderTraffic(site, gran='monthly', srcFilter='all') {
   const d = DATA[site].traffic;
   const isW = gran === 'weekly';
-  const labels = trafficLabels(isW, site);
+  const allLabels = trafficLabels(isW, site);
+  const N6 = 6;
+  const labels = isW ? allLabels : allLabels.slice(-N6);
   const src = isW ? d.week : d.mon;
+  const sliceData = arr => isW ? (arr || []) : (arr || []).slice(-N6);
 
   let tDatasets = [], cvData = [];
 
@@ -1653,25 +1727,25 @@ function renderTraffic(site, gran='monthly', srcFilter='all') {
     // Stacked bars + overall conversion line
     SRC_DEFS.forEach(s => {
       tDatasets.push({
-        label:s.label, data:src[s.key], backgroundColor:s.color,
+        label:s.label, data:sliceData(src[s.key]), backgroundColor:s.color,
         borderRadius:2, stack:'t', order:2,
       });
     });
     // Total conversion = sum regs / sum unique users (qty_users)
-    const totalTraffic = labels.map((_,i)=> SRC_DEFS.reduce((a,s)=>a+(src[s.key][i]||0),0));
+    const totalTraffic = labels.map((_,i)=> SRC_DEFS.reduce((a,s)=>a+(sliceData(src[s.key])[i]||0),0));
     const totalRegs = (() => {
       const rD = DATA[site].reg;
       const rs = isW ? rD.week : rD.mon;
-      return labels.map((_,i) => (rs.pom[i]||0) + (rs.direct[i]||0));
+      return labels.map((_,i) => (sliceData(rs.pom)[i]||0) + (sliceData(rs.direct)[i]||0));
     })();
     cvData = totalTraffic.map((tr,i)=> tr>0 ? +(totalRegs[i]/tr*100).toFixed(2) : null);
   } else {
     const s = SRC_DEFS.find(s=>s.key===srcFilter);
     tDatasets.push({
-      label:s.label, data:src[srcFilter], backgroundColor:s.color,
+      label:s.label, data:sliceData(src[srcFilter]), backgroundColor:s.color,
       borderRadius:4, stack:'t', order:2,
     });
-    cvData = src['cv_'+srcFilter];
+    cvData = sliceData(src['cv_'+srcFilter]);
   }
 
   tDatasets.push({
@@ -2203,7 +2277,7 @@ function renderReg(site, gran='monthly') {
             <div class="mname" style="font-size:11px"><span style="width:6px;height:6px;border-radius:50%;background:#111827;flex-shrink:0;display:inline-block;margin-right:6px"></span>Spend POM</div>
           </td>
           <td class="num" style="font-size:11px"><strong>${fmtK(mtd.spend_pom)} LC</strong></td>
-          <td style="font-size:11px"><span class="neu">-</span></td>
+          <td style="font-size:11px">${prev.spend_pom != null ? deltaVsAbr(mtd.spend_pom, prev.spend_pom) : '<span class="neu">-</span>'}</td>
           <td style="font-size:11px"><span class="neu">-</span></td>
           <td style="font-size:11px"><span class="neu">-</span></td>
         </tr>` : ''}
@@ -2435,32 +2509,119 @@ function renderActivity(site) {
   });
 }
 
+function renderMktContext(site) {
+  const d = DATA[site].mkt;
+  if (!d || !d.months || !d.months.length) return;
+  const n12 = 12;
+  const labels  = d.months.slice(-n12);
+  const nmv     = (d.mon.nmv      || []).slice(-n12);
+  const sessions= (d.mon.sessions || []).slice(-n12);
+  mkChart(`mkt-main-${site}`, {
+    type:'bar',
+    data:{labels, datasets:[
+      {
+        label:'NMV Total Sitio (LC)', data:nmv,
+        backgroundColor:'rgba(37,99,235,0.75)', borderRadius:3, order:2, yAxisID:'ynmv',
+        datalabels:{display:false},
+      },
+      {
+        label:'Sesiones →', data:sessions,
+        type:'line', yAxisID:'yses',
+        borderColor:'#EA580C', backgroundColor:'transparent',
+        borderWidth:2, pointRadius:3, tension:0.35, order:1,
+        datalabels:{display:false},
+      },
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:baseLegend(10),
+        tooltip:{
+          mode:'index', intersect:false,
+          callbacks:{label:ctx=>{
+            const v=ctx.raw; if(v==null) return null;
+            if(ctx.dataset.label.startsWith('Ses')) return ` Sesiones: ${fmt(v)}${momStr(ctx)}`;
+            return ` NMV: ${fmtK(v)} LC${momStr(ctx)}`;
+          }},
+        },
+      },
+      scales:{
+        x:{grid:{display:false},ticks:{font:{size:10},maxRotation:40}},
+        ynmv:{
+          position:'left', grid:{color:'#F3F4F7'},
+          ticks:{font:{size:10},callback:v=>fmtK(v)},
+          title:{display:true,text:'NMV (LC)',font:{size:9}},
+          suggestedMin:0,
+        },
+        yses:{
+          position:'right', grid:{display:false},
+          ticks:{font:{size:9.5},color:'#EA580C',callback:v=>fmt(v)},
+          title:{display:true,text:'Sesiones →',color:'#EA580C',font:{size:9.5}},
+          suggestedMin:0,
+        },
+      },
+    },
+  });
+  const m = d.mtd || {};
+  document.getElementById(`mkt-kpi-${site}`).innerHTML = `
+    <table class="kpi-table">
+      <thead><tr>
+        <th>Métrica</th>
+        <th>MTD (${DAYS_ELAPS}d)</th>
+        <th>Δ vs ${PREV_MTD_LABEL}</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><div class="mname"><span class="dot" style="background:#2563EB"></span>NMV Total Sitio</div></td>
+          <td class="num"><strong>${fmtK(m.nmv)} LC</strong></td>
+          <td>${deltaVsAbr(m.nmv, m.nmv_prev)}</td>
+        </tr>
+        <tr>
+          <td><div class="mname"><span class="dot" style="background:#EA580C"></span>Sesiones</div></td>
+          <td class="num"><strong>${fmt(m.sessions)}</strong></td>
+          <td>${deltaVsAbr(m.sessions, m.sessions_prev)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="footnote" style="margin-top:8px">Fuente: Torre de Control — NMV-UMM-MARKETPLACE · SESSIONS-AMPL · vs mismo período mes anterior</div>`;
+}
+
 function renderChurn(site, gran='monthly') {
   const d = DATA[site].churn;
   const isW = gran === 'weekly';
   const labels = isW ? W_8 : DATA[site].months;
   const pnewData = isW ? d.week.pnew : d.mon.pnew;
 
+  const behNewData  = isW ? d.week.beh_new  : d.mon.beh_new;
+  const behRecData  = isW ? d.week.beh_rec  : d.mon.beh_rec;
+  const behRetData  = isW ? d.week.beh_ret  : d.mon.beh_ret;
   mkChart(`churn1-${site}`, {
-    type:'line',
-    data:{labels, datasets:[{
-      label:'Churn nuevos / activos mes anterior',
-      data:pnewData,
-      borderColor:C.blue, backgroundColor:C.blueFade,
-      fill:true, tension:.4, pointRadius:3, borderWidth:2,
-    }]},
+    type:'bar',
+    data:{labels, datasets:[
+      {label:'new',       data:behNewData,  backgroundColor:C.red,    stack:'s'},
+      {label:'recovered', data:behRetData,  backgroundColor:C.orange, stack:'s'},
+      {label:'recurrent', data:behRecData,  backgroundColor:C.blue,   stack:'s'},
+    ]},
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false},
-        tooltip:{callbacks:{label:ctx=>` ${ctx.raw}%${momStr(ctx)}`}}},
-      scales:baseScale(v=>v+'%',0),
+      plugins:{
+        legend:{position:'top',labels:{font:{size:10},padding:8,boxWidth:9}},
+        tooltip:{
+          mode:'index', intersect:false,
+          callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.raw != null ? ctx.raw+'%' : '—'}${momStr(ctx)}`},
+        },
+      },
+      scales:{
+        x:{stacked:true,grid:{display:false},ticks:{font:{size:10},maxRotation:40}},
+        y:{stacked:true,max:100,grid:{color:'#F3F4F7'},ticks:{font:{size:10},callback:v=>v+'%'}},
+      },
     },
   });
 
   mkChart(`churn2-${site}`, {
     type:'bar',
     data:{labels:DATA[site].months, datasets:[
-      {label:'One Month Wonder',color:C.red},
+      {label:'new (1m)',color:C.red},
       {label:'Early (2–3m)',    color:C.orange},
       {label:'Mid (4–6m)',      color:C.yellow},
       {label:'Established 7m+',color:C.green},
@@ -2511,7 +2672,7 @@ function renderChurn(site, gran='monthly') {
         </tr>
         <tr>
           <td>
-            <div class="mname"><span class="dot" style="background:${C.red}"></span>One Month Wonder</div>
+            <div class="mname"><span class="dot" style="background:${C.red}"></span>new (1m)</div>
           </td>
           <td class="num">${fmtP(omwMtd)}</td>
           <td>${deltaVsAbrPct(omwMtd, prevOmwMtd, false)}</td>
@@ -2713,13 +2874,13 @@ function buildPage(site) {
   <div class="sec-lbl">🌐 Tráfico a la Landing <button class="qry-btn" onclick="showQuery('trf')">{ SQL }</button></div>
   ${freshTag(FRESHNESS.dateTrf)}
 
-  <div class="card">
-    <div class="card-hdr">
-      <div>
-        <div class="card-title">Visitas a la Landing · % Conversión</div>
-        <div class="card-sub">Tráfico por source + tasa de conversión landing → registro (eje der.)</div>
-      </div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Visitas a la Landing · % Conversión</div>
+          <div class="card-sub">Últimos 6 meses · por source + tasa de conversión (eje der.)</div>
+        </div>
         <div class="src-filter-wrap">
           <label>Ver:</label>
           <select class="src-select" id="trf-src-${site}" onchange="onSrcChange('${site}',this)">
@@ -2734,33 +2895,43 @@ function buildPage(site) {
             <option value="eg">E&amp;G</option>
           </select>
         </div>
-        <div class="gran-tog">
-          <button class="gran-btn active" onclick="setGran('trf','${site}','monthly',this)">Mensual</button>
-          <button class="gran-btn" onclick="setGran('trf','${site}','weekly',this)">Semanal</button>
-        </div>
       </div>
+      <div class="chart-wrap"><canvas id="trf-main-${site}"></canvas></div>
     </div>
-    <div class="chart-wrap"><canvas id="trf-main-${site}"></canvas></div>
-    <div class="kpi-wrap" id="trf-kpi-${site}"></div>
+    <div class="card">
+      <div class="card-hdr"><div>
+        <div class="card-title">Detalle MTD por Canal</div>
+        <div class="card-sub">Visitas · conversión · vs ${PREV_MTD_LABEL}</div>
+      </div></div>
+      <div class="kpi-wrap" id="trf-kpi-${site}"></div>
+    </div>
   </div>
 
   <!-- ══════════ REGISTROS ══════════ -->
   <div class="sec-lbl">📥 Registros por Source <button class="qry-btn" onclick="showQuery('reg')">{ SQL }</button></div>
   ${freshTag(FRESHNESS.dateReg)}
 
-  <div class="card">
-    <div class="card-hdr">
-      <div>
-        <div class="card-title">Registros Totales (POM vs Direct)</div>
-        <div class="card-sub">Cantidad de afiliados que completan el registro</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Registros Totales (POM vs Direct)</div>
+          <div class="card-sub">Cantidad de afiliados que completan el registro</div>
+        </div>
+        <div class="gran-tog">
+          <button class="gran-btn active" onclick="setGran('reg','${site}','monthly',this)">Mensual</button>
+          <button class="gran-btn" onclick="setGran('reg','${site}','weekly',this)">Semanal</button>
+        </div>
       </div>
-      <div class="gran-tog">
-        <button class="gran-btn active" onclick="setGran('reg','${site}','monthly',this)">Mensual</button>
-        <button class="gran-btn" onclick="setGran('reg','${site}','weekly',this)">Semanal</button>
-      </div>
+      <div class="chart-wrap"><canvas id="reg-main-${site}"></canvas></div>
     </div>
-    <div class="chart-wrap"><canvas id="reg-main-${site}"></canvas></div>
-    <div class="kpi-wrap" id="reg-kpi-${site}"></div>
+    <div class="card">
+      <div class="card-hdr"><div>
+        <div class="card-title">Detalle MTD por Canal</div>
+        <div class="card-sub">Registros · pacing · vs ${PREV_MTD_LABEL}</div>
+      </div></div>
+      <div class="kpi-wrap" id="reg-kpi-${site}"></div>
+    </div>
   </div>
 
   <!-- ══════════ ACTIVACIÓN ══════════ -->
@@ -2787,30 +2958,6 @@ function buildPage(site) {
       <div class="chart-wrap sm"><canvas id="act2-${site}"></canvas></div>    </div>
   </div>
 
-  <!-- ══════════ ACTIVIDAD ══════════ -->
-  <div class="sec-lbl">🔗 Actividad <button class="qry-btn" onclick="showQuery('links_monthly')">{ SQL }</button></div>
-
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-hdr">
-        <div>
-          <div class="card-title">Usuarios generando links</div>
-          <div class="card-sub">Afiliados únicos que generaron al menos 1 link en el mes · últimos 6 meses</div>
-        </div>
-      </div>
-      <div class="chart-wrap sm"><canvas id="act-lnk1-${site}"></canvas></div>
-    </div>
-    <div class="card">
-      <div class="card-hdr">
-        <div>
-          <div class="card-title">Links por afiliado</div>
-          <div class="card-sub">Total links generados / afiliados que generaron links en el mes · últimos 6 meses</div>
-        </div>
-      </div>
-      <div class="chart-wrap sm"><canvas id="act-lnk2-${site}"></canvas></div>
-    </div>
-  </div>
-
   <!-- ══════════ CHURN ══════════ -->
   <div class="sec-lbl">🔴 Churn <button class="qry-btn" onclick="showQuery('churn')">{ SQL }</button></div>
   ${freshTag(FRESHNESS.dateChu)}
@@ -2819,8 +2966,8 @@ function buildPage(site) {
     <div class="card">
       <div class="card-hdr">
         <div>
-          <div class="card-title">% de Churn que son Nuevos</div>
-          <div class="card-sub">Afiliados churneados que eran nuevos el mes anterior / total activos mes anterior</div>
+          <div class="card-title">Composición del Churn por Behaviour</div>
+          <div class="card-sub">Del total churneado: qué comportamiento tenían el mes anterior (new/recovered/recurrent)</div>
         </div>
         <div class="gran-tog">
           <button class="gran-btn active" onclick="setGran('churn','${site}','monthly',this)">Mensual</button>
@@ -2841,6 +2988,26 @@ function buildPage(site) {
 
   <div class="card">
     <div class="kpi-wrap" id="churn-kpi-${site}" style="padding-top:12px"></div>
+  </div>
+
+  <!-- ══════════ CONTEXTO MARKETPLACE ══════════ -->
+  <div class="sec-lbl">📈 Contexto Marketplace <span style="font-size:10px;color:#9CA3AF;font-weight:400">fuente: Torre de Control</span></div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hdr"><div>
+        <div class="card-title">NMV Total Sitio · Sesiones</div>
+        <div class="card-sub">Evolución del marketplace · NMV (barras, eje izq.) · Sesiones (línea, eje der.) · últimos 12 meses</div>
+      </div></div>
+      <div class="chart-wrap"><canvas id="mkt-main-${site}"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-hdr"><div>
+        <div class="card-title">Performance MTD del Sitio</div>
+        <div class="card-sub">Vs mismo período mes anterior (PP)</div>
+      </div></div>
+      <div class="kpi-wrap" id="mkt-kpi-${site}"></div>
+    </div>
   </div>
 
   `;
@@ -3020,8 +3187,8 @@ function renderSite(site) {
     renderTraffic(site, 'monthly', 'all');
     renderReg(site, 'monthly');
     renderAct(site);
-    renderActivity(site);
     renderChurn(site, 'monthly');
+    renderMktContext(site);
     rendered.add(site);
   }, 0);
 }
@@ -4080,6 +4247,9 @@ function processSpend(rows) {
     // MTD: valor del mes corriente (para que addCurrentMonthPoints lo proyecte)
     const mtdRow = sr.find(r => r.period === 'mtd');
     DATA[site].reg.mtd.spend_pom = mtdRow ? mtdRow.cost_lc : null;
+    const prevMtdRow = sr.find(r => r.period === 'prev_mtd');
+    if (!DATA[site].reg.mtd_prev) DATA[site].reg.mtd_prev = {};
+    DATA[site].reg.mtd_prev.spend_pom = prevMtdRow ? prevMtdRow.cost_lc : null;
 
     // Histórico: meses completos (period = 'hist'), ordenados
     const histRows = sr
@@ -4259,12 +4429,46 @@ function processLinksMonthly(rows) {
   });
 }
 
+function processMktContext(rows) {
+  ['MLB','MLM','MLC','MLA'].forEach(site => {
+    const sr = rows.filter(r => r.sit_site_id === site);
+    const monthly = sr.filter(r => r.period === 'MONTHLY')
+                      .sort((a,b) => String(a.dt_to).localeCompare(String(b.dt_to)));
+    if (monthly.length) {
+      const nmvRows = monthly.filter(r => r.kpi_id === 'NMV-UMM-MARKETPLACE');
+      const sesRows = monthly.filter(r => r.kpi_id === 'SESSIONS-AMPL');
+      const months = nmvRows.map(r => {
+        const dt = new Date(r.dt_to + 'T12:00:00');
+        return MON_NAMES_ES[dt.getMonth()] + ' ' + String(dt.getFullYear()).slice(2);
+      });
+      DATA[site].mkt.months = months;
+      DATA[site].mkt.mon.nmv = nmvRows.map(r => r.value != null ? +r.value : null);
+      DATA[site].mkt.mon.sessions = sesRows.length
+        ? sesRows.map(r => r.value != null ? +r.value : null)
+        : months.map(() => null);
+    }
+    const mtdNmv = sr.find(r => r.period === 'MTD' && r.kpi_id === 'NMV-UMM-MARKETPLACE');
+    const mtdSes = sr.find(r => r.period === 'MTD' && r.kpi_id === 'SESSIONS-AMPL');
+    DATA[site].mkt.mtd = {
+      nmv:           mtdNmv ? +mtdNmv.value    : null,
+      nmv_prev:      mtdNmv ? +mtdNmv.value_cp : null,
+      sessions:      mtdSes ? +mtdSes.value    : null,
+      sessions_prev: mtdSes ? +mtdSes.value_cp : null,
+    };
+  });
+}
+
 function processChurn(churnRows, compRows, mtdRows) {
   ['MLB','MLM','MLC','MLA'].forEach(site => {
     const cr = churnRows.filter(r => r.sit_site_id === site)
                         .sort((a,b) => String(a.month).localeCompare(String(b.month)));
     if (cr.length) {
       DATA[site].churn.mon.pnew = cr.map(r => r.pct_churn_new);
+    }
+    if (cr.length) {
+      DATA[site].churn.mon.beh_new = cr.map(r => r.pct_churned_new ?? null);
+      DATA[site].churn.mon.beh_ret = cr.map(r => r.pct_churned_recovered ?? null);
+      DATA[site].churn.mon.beh_rec = cr.map(r => r.pct_churned_recurrent ?? null);
     }
     // Weekly pnew — use last 8 monthly values as weekly approximation if no weekly query
     // (behaviour has weekly but churn doesn't — leave mock weekly data as-is)
@@ -4482,6 +4686,7 @@ async function autoLoadFromGAS() {
     if (data.links_monthly) processLinksMonthly(data.links_monthly);
     if (data.churn && data.churn_comp && data.churn_mtd)
                            processChurn(data.churn, data.churn_comp, data.churn_mtd);
+    if (data.mkt_context)   processMktContext(data.mkt_context);
 
     // ── Inyectar mes corriente (parcial) en todos los arrays mensuales ──
     addCurrentMonthPoints();
@@ -4576,6 +4781,7 @@ async function loadSnapshot() {
     if (d.act_new_days)                          processActNewDays(d.act_new_days);
     if (d.links_monthly)                         processLinksMonthly(d.links_monthly);
     if (d.churn && d.churn_comp && d.churn_mtd)  processChurn(d.churn, d.churn_comp, d.churn_mtd);
+    if (d.mkt_context)                           processMktContext(d.mkt_context);
 
     addCurrentMonthPoints();
     trimDataToWindow(12);
@@ -4628,6 +4834,7 @@ async function loadSnapshot() {
         if (d.links_monthly)  processLinksMonthly(d.links_monthly);
         if (d.churn && d.churn_comp && d.churn_mtd)
                             processChurn(d.churn, d.churn_comp, d.churn_mtd);
+        if (d.mkt_context)  processMktContext(d.mkt_context);
         addCurrentMonthPoints();
         trimDataToWindow(12);
         const badge = document.getElementById('data-badge');
