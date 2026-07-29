@@ -397,7 +397,7 @@ WITH raw AS (
   FROM `meli-bi-data.SBOX_MARKETING.BT_COST_TIKTOK_DAILY`
   WHERE advertiser_id IN (7296191154461114370,7356731484117663745,7520663504987226129)
     AND EVENT_DATE >= '${D.HIST}'
-)
+),
 base AS (
   SELECT site_id, month_id,
     IF(month_id = '${D.CUR}', 'mtd', 'hist') AS period,
@@ -431,7 +431,7 @@ seg AS (
   SELECT DATE_TRUNC(CAST(DT AS DATE),MONTH) AS mes, SIT_SITE_ID,
     CASE WHEN SEGMENT IN ('KAM','Potential KAM') THEN 'nlt' ELSE 'lt' END AS seg,
     SUM(NMV_AFF) AS nmv_aff,
-    COUNT(DISTINCT AFFILIATE_ID) AS active_aff_seg
+    COUNT(DISTINCT CUS_CUST_ID_AFF) AS active_aff_seg
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
   WHERE CAST(DT AS DATE) >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
   GROUP BY 1,2,3
@@ -673,84 +673,6 @@ INNER JOIN first_sale f ON r.USER_ID = f.AFFILIATE_ID AND r.SITE_ID = f.SIT_SITE
 GROUP BY 1, 2 ORDER BY SITE_ID, mes
 '@
 
-$sqlMap["links_monthly"] = d @'
-WITH pre_users AS (
-  SELECT user_id, site, MIN(ds) AS first_seen_ds
-  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE`
-  WHERE ds BETWEEN '2026-01-08' AND '2026-01-14'
-    AND site IN ('MLB','MLM','MLC','MLA') AND path = '/share/show_header'
-    AND JSON_EXTRACT_SCALAR(event_data, '$.banner_type') = 'commission'
-  GROUP BY ALL
-),
-share_pre AS (
-  SELECT t.ds, t.site, t.user_id, COUNT(*) AS links
-  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE` t
-  INNER JOIN pre_users u ON u.user_id = t.user_id AND t.ds >= u.first_seen_ds
-  WHERE t.ds BETWEEN '2026-01-08' AND '2026-01-14'
-    AND t.site IN ('MLB','MLM','MLC','MLA') AND t.path = '/share/action'
-  GROUP BY ALL
-),
-share_pos AS (
-  SELECT ds, site, user_id, COUNT(*) AS links
-  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO_SHARE`
-  WHERE ds >= '2026-01-15' AND ds < '${D.CUR}' AND site IN ('MLB','MLM','MLC','MLA') AND path = '/share/action'
-    AND JSON_EXTRACT_SCALAR(event_data, '$.user_type') = 'affiliates'
-  GROUP BY ALL
-),
-stripe_hub AS (
-  SELECT ds, site, user_id, COUNT(*) AS links
-  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.ETL_AFFILIATE_TRACKS_PRODUCTO`
-  WHERE ds >= '${D.HIST}' AND ds < '${D.CUR}' AND site IN ('MLB','MLM','MLC','MLA')
-    AND (
-      path IN ('/affiliates/stripe/link', '/affiliates/linkbuilder/v1/generate')
-      OR path IN ('/affiliates/stripe_webview/copy_link', '/affiliates/stripe_webview/share_link')
-      OR (path = '/affiliates/hub/share/select'
-          AND JSON_EXTRACT_SCALAR(event_data, '$.select_value') IN ('copy_link','copy_id'))
-    )
-  GROUP BY ALL
-),
-all_links AS (
-  SELECT ds, site, user_id, links FROM share_pre
-  UNION ALL SELECT ds, site, user_id, links FROM share_pos
-  UNION ALL SELECT ds, site, user_id, links FROM stripe_hub
-),
-monthly_links AS (
-  SELECT
-    site,
-    DATE_TRUNC(ds, MONTH) AS mes,
-    COUNT(DISTINCT user_id) AS link_users,
-    SUM(links) AS total_links
-  FROM all_links
-  GROUP BY 1, 2
-),
--- Afiliados que generaron links Y tuvieron venta en el mismo mes
-link_sellers AS (
-  SELECT al.site, DATE_TRUNC(al.ds, MONTH) AS mes,
-    COUNT(DISTINCT al.user_id) AS link_sellers
-  FROM all_links al
-  INNER JOIN `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s
-    ON SAFE_CAST(al.user_id AS INT64) = s.AFFILIATE_ID
-    AND al.site = s.SIT_SITE_ID
-    AND DATE_TRUNC(al.ds, MONTH) = DATE_TRUNC(DATE(s.ORD_CREATED_DT), MONTH)
-  WHERE s.ORD_STATUS = 'paid' AND s.SIT_SITE_ID = s.AFFILIATE_SIT_SITE_ID
-    AND s.ORD_CREATED_DT >= '${D.HIST}' AND s.ORD_CREATED_DT < '${D.CUR}'
-    AND ((s.ORD_CREATED_DT >= '${D.ENIGMA}' AND s.NMV_ENIGMA_TOTAL_AMT_LC > 0)
-      OR (s.ORD_CREATED_DT < '${D.ENIGMA}' AND s.NMV_TD7DCALIB_TOTAL_AMT_LC > 0))
-  GROUP BY 1, 2
-)
-SELECT
-  ml.site AS site_id,
-  ml.mes,
-  ml.link_users,
-  ml.total_links,
-  ROUND(SAFE_DIVIDE(ml.total_links, ml.link_users), 1) AS links_per_user,
-  ls.link_sellers,
-  ROUND(SAFE_DIVIDE(ls.link_sellers, ml.link_users) * 100, 1) AS cvr
-FROM monthly_links ml
-LEFT JOIN link_sellers ls ON ml.site = ls.site AND ml.mes = ls.mes
-ORDER BY site_id, mes
-'@
-
 $sqlMap["churn"] = d @'
 WITH monthly_active AS (
   SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT,MONTH) AS month, AFFILIATE_ID
@@ -868,7 +790,7 @@ SELECT SIT_SITE_ID,
 FROM window_sales GROUP BY 1
 '@
 
-$sqlMap["mkt_context"] = @'
+$sqlMap["mkt_context"] = d @'
 SELECT
   KPI_ID,
   SIT_SITE_ID,
@@ -1000,7 +922,6 @@ $data = [ordered]@{
     act2            = (Parse-BQResult $rawResults["act2"].json)
     act_source      = (Parse-BQResult $rawResults["act_source"].json)
     act_new_days    = (Parse-BQResult $rawResults["act_new_days"].json)
-    links_monthly   = (Parse-BQResult $rawResults["links_monthly"].json)
     churn         = (Parse-BQResult $rawResults["churn"].json)
     churn_comp    = (Parse-BQResult $rawResults["churn_comp"].json)
     churn_mtd     = (Parse-BQResult $rawResults["churn_mtd"].json)
@@ -1014,7 +935,7 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
 @('behaviour','beh_mtd','beh_pacing','qr_rolling','registrations','reg_mtd',
   'reg_pacing','landing_traffic','landing_pacing','spend_pom',
   'nmv_monthly','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
-  'act1','act2','act_source','act_new_days','links_monthly','churn','churn_comp','churn_mtd','mkt_context') | ForEach-Object {
+  'act1','act2','act_source','act_new_days','churn','churn_comp','churn_mtd','mkt_context') | ForEach-Object {
     $snapshotJson = $snapshotJson.Replace("`"$_`":null", "`"$_`":[]")
 }
 
