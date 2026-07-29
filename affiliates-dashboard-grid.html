@@ -149,11 +149,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 
 /* KPI TABLE */
 .kpi-wrap{padding:0 16px 12px}
-.kpi-table{width:100%;border-collapse:collapse;font-size:11px}
-.kpi-table th{text-align:left;padding:3px 5px;font-size:10px;text-transform:uppercase;
+.kpi-table{width:100%;border-collapse:collapse;font-size:12px}
+.kpi-table th{text-align:left;padding:7px 9px;font-size:10.5px;text-transform:uppercase;
   letter-spacing:.5px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);
   background:#FAFAFA;white-space:nowrap}
-.kpi-table td{padding:3px 5px;border-bottom:1px solid #F3F4F7;vertical-align:middle}
+.kpi-table td{padding:8px 9px;border-bottom:1px solid #F3F4F7;vertical-align:middle}
 .kpi-table tr:last-child td{border-bottom:none}
 .kpi-table tr:hover td{background:#FAFAFA}
 .mname{display:flex;align-items:center;gap:6px;font-weight:500}
@@ -1696,12 +1696,7 @@ function renderBeh(site, gran='monthly') {
         })()}
       </tbody>
     </table>
-    <div style="margin-top:10px;font-size:10.5px;color:var(--muted);padding:0 4px;line-height:1.6">
-      <strong style="color:#374151;font-size:10.5px">Cómo se calculan las proyecciones</strong><br>
-      · <strong>Pacing (${nMesesPacing}m):</strong> MTD ÷ pacing_promedio, donde pacing = (métrica al día D del mes) ÷ (cierre total de ese mes), promediado sobre los últimos ${nMesesPacing} meses cerrados. Captura patrones de aceleración/desaceleración intra-mes.<br>
-      · <strong>Target:</strong> cierre ${PREV_MON_SHORT} ±10% para todas las métricas.<br>
-      · <strong>Quick Ratio:</strong> no se proyecta — a inicio de mes el denominador (inactivos) está artificialmente bajo. Usar QR Rolling 30d como referencia estable.
-    </div>`;
+    `;
 
 }
 
