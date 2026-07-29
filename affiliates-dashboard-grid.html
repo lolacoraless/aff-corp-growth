@@ -1306,6 +1306,13 @@ function renderBeh(site, gran='monthly') {
     color: '#fff',
   };
 
+  // Symmetric y-extent: ensures bars fill chart height on both sides
+  const _posMax = labels.map((_, i) =>
+    Math.max(0, (sliceData(src.new)[i]||0) + (sliceData(src.rec)[i]||0) + (sliceData(src.ret)[i]||0))
+  ).reduce((a, b) => Math.max(a, b), 1);
+  const _negMax = Math.max(1, ...sliceData(src.chu||[]).map(v => Math.abs(v||0)));
+  const yExtent = Math.max(_posMax, _negMax) * 1.2;
+
   mkChart(`beh-main-${site}`, {
     type: 'bar',
     data: {
@@ -1453,6 +1460,8 @@ function renderBeh(site, gran='monthly') {
         },
         y: {
           stacked: true,
+          min: -yExtent,
+          max: yExtent,
           grid: { color: '#F3F4F7' },
           ticks: {
             font: { size: 10 },
@@ -2866,6 +2875,7 @@ function buildPage(site) {
   <div class="sec-lbl">📊 Behaviour <button class="qry-btn" onclick="showQuery('beh')">{ SQL }</button></div>
   ${freshTag(FRESHNESS.dateBeh)}
 
+  <div class="grid-2">
   <div class="card">
     <div class="card-hdr">
       <div>
@@ -2877,8 +2887,11 @@ function buildPage(site) {
       </div>
     </div>
     <div class="chart-wrap"><canvas id="beh-main-${site}"></canvas></div>
+  </div>
+  <div class="card">
     <div class="kpi-wrap" id="beh-kpi-${site}"></div>
   </div>
+</div>
 
   <!-- ══════════ TRÁFICO LANDING ══════════ -->
   <div class="sec-lbl">🌐 Tráfico a la Landing <button class="qry-btn" onclick="showQuery('trf')">{ SQL }</button></div>

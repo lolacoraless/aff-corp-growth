@@ -894,6 +894,7 @@ $startTime = Get-Date
 
 $jobBlock = {
     param([string]$sql, [string]$name)
+    $jStart = Get-Date
     try {
         $tmp = [IO.Path]::GetTempFileName()
         $enc = New-Object System.Text.UTF8Encoding $false
@@ -903,9 +904,11 @@ $jobBlock = {
         $ok = ($LASTEXITCODE -eq 0)
         $jsonStr = if ($ok) { ($raw -join '') } else { '[]' }
         $errStr  = if (-not $ok) { ($raw -join ' ') } else { '' }
-        return [PSCustomObject]@{ name=$name; ok=$ok; json=$jsonStr; error=$errStr }
+        $dur = [Math]::Round(((Get-Date) - $jStart).TotalSeconds, 1)
+        return [PSCustomObject]@{ name=$name; ok=$ok; json=$jsonStr; error=$errStr; duration=$dur }
     } catch {
-        return [PSCustomObject]@{ name=$name; ok=$false; json='[]'; error=$_.Exception.Message }
+        $dur = [Math]::Round(((Get-Date) - $jStart).TotalSeconds, 1)
+        return [PSCustomObject]@{ name=$name; ok=$false; json='[]'; error=$_.Exception.Message; duration=$dur }
     }
 }
 
@@ -922,7 +925,8 @@ $jobs.Values | Wait-Job | ForEach-Object {
     $sec = [Math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
     $status = if ($r.ok) { "OK  " } else { "FAIL" }
     $detail = if ($r.ok) { "$([Math]::Round($r.json.Length/1024,0)) KB" } else { $r.error.Substring(0,[Math]::Min(500,$r.error.Length)) }
-    Write-Host "  [${sec}s] $status $($r.name) — $detail"
+    $qDur = if ($null -ne $r.duration) { $r.duration } else { "?" }
+    Write-Host ("  [{0,-22}] {1}  {2,5}s query  {3,5}s total  {4}" -f $r.name, $status, $qDur, $sec, $detail)
     $rawResults[$r.name] = $r
     Remove-Job $_ -Force
 }
@@ -930,6 +934,13 @@ $jobs.Values | Wait-Job | ForEach-Object {
 $totalSec = [Math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
 Write-Host ""
 Write-Host "All queries done in ${totalSec}s" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "=== Slowest queries ===" -ForegroundColor Yellow
+$rawResults.Values | Sort-Object { if ($null -ne $_.duration) { $_.duration } else { 0 } } -Descending | Select-Object -First 10 | ForEach-Object {
+    $s = if ($_.ok) { "OK  " } else { "FAIL" }
+    $col = if ($_.ok) { "Gray" } else { "Red" }
+    Write-Host ("  {0,-25} {1}  {2}s" -f $_.name, $s, $_.duration) -ForegroundColor $col
+}
 
 # ==== PARSE BQ JSON (strings -> numbers where possible) ======================
 function Parse-BQResult([string]$jsonStr) {
