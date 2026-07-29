@@ -427,19 +427,42 @@ beh AS (
   FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_BEHAVIOUR`
   WHERE period = 'MONTH' AND sit_site_id IN ('MLB','MLM','MLC','MLA') AND dt >= '${D.HIST}'
 ),
-seg AS (
+seg_nmv AS (
   SELECT DATE_TRUNC(CAST(DT AS DATE),MONTH) AS mes, SIT_SITE_ID,
     CASE WHEN SEGMENT IN ('KAM','Potential KAM') THEN 'nlt' ELSE 'lt' END AS seg,
     SUM(NMV_AFF) AS nmv_aff,
-    COUNT(DISTINCT CUS_CUST_ID_AFF) AS active_aff_seg
+    COUNT(DISTINCT IF(CUS_CUST_ID_AFF > 0, CUS_CUST_ID_AFF, NULL)) AS nlt_active
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
   WHERE CAST(DT AS DATE) >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
   GROUP BY 1,2,3
+),
+kam_excl AS (
+  SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_TYPE`
+  UNION DISTINCT
+  SELECT DISTINCT cus_cust_id_aff, sit_site_id
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_KA_CATEGORIES`
+  WHERE segment = 'Potential KAM'
+),
+lt_active AS (
+  SELECT DATE_TRUNC(s.ORD_CREATED_DT, MONTH) AS mes, s.SIT_SITE_ID,
+    COUNT(DISTINCT s.AFFILIATE_ID) AS active_lt
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s
+  LEFT JOIN kam_excl e ON s.AFFILIATE_ID = e.affiliate_id AND s.SIT_SITE_ID = e.sit_site_id
+  WHERE e.affiliate_id IS NULL
+    AND s.AFFILIATE_ID IS NOT NULL AND s.AFFILIATE_ID != 0
+    AND s.ORD_CREATED_DT >= '${D.HIST}'
+    AND s.SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+  GROUP BY 1,2
 )
 SELECT s.mes, s.SIT_SITE_ID, s.seg, s.nmv_aff, t.nmv_ts,
   SAFE_DIVIDE(s.nmv_aff,t.nmv_ts) AS share_ts,
-  s.active_aff_seg AS active_aff, SAFE_DIVIDE(s.nmv_aff, s.active_aff_seg) AS npa
-FROM seg s JOIN ts t USING(mes,SIT_SITE_ID)
+  CASE WHEN s.seg = 'lt' THEN la.active_lt ELSE s.nlt_active END AS active_aff,
+  CASE WHEN s.seg = 'lt' THEN SAFE_DIVIDE(s.nmv_aff, la.active_lt)
+       ELSE SAFE_DIVIDE(s.nmv_aff, s.nlt_active) END AS npa
+FROM seg_nmv s
+JOIN ts t USING(mes, SIT_SITE_ID)
+LEFT JOIN lt_active la ON s.mes = la.mes AND s.SIT_SITE_ID = la.SIT_SITE_ID AND s.seg = 'lt'
 UNION ALL
 SELECT t.mes, t.SIT_SITE_ID, 'all' AS seg, t.nmv_aff_total AS nmv_aff, t.nmv_ts,
   SAFE_DIVIDE(t.nmv_aff_total,t.nmv_ts) AS share_ts,
@@ -473,26 +496,46 @@ ORDER BY yr, wk, SIT_SITE_ID
 $sqlMap["nmv_mtd"] = d @'
 WITH total AS (
   SELECT SIT_SITE_ID,
-    SUM(CASE WHEN DT BETWEEN '${D.CUR}' AND '${D.YEST}' THEN NMV_AFF ELSE 0 END) AS nmv_curr,
-    SUM(CASE WHEN DT BETWEEN '${D.CUR}' AND '${D.YEST}' THEN NMV_TS  ELSE 0 END) AS ts_curr,
+    SUM(CASE WHEN DT BETWEEN '${D.CUR}' AND '${D.YEST}'      THEN NMV_AFF ELSE 0 END) AS nmv_curr,
+    SUM(CASE WHEN DT BETWEEN '${D.CUR}' AND '${D.YEST}'      THEN NMV_TS  ELSE 0 END) AS ts_curr,
     SUM(CASE WHEN DT BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_AFF ELSE 0 END) AS nmv_prev,
     SUM(CASE WHEN DT BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_TS  ELSE 0 END) AS ts_prev
   FROM `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`
   WHERE DT >= '${D.PREV}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') GROUP BY 1
 ),
-lt AS (
+lt_nmv AS (
   SELECT SIT_SITE_ID,
-    SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.CUR}' AND '${D.YEST}' THEN NMV_AFF ELSE 0 END) AS lt_nmv_curr,
-    SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_AFF ELSE 0 END) AS lt_nmv_prev,
-    COUNT(DISTINCT CASE WHEN CAST(DT AS DATE) BETWEEN '${D.CUR}' AND '${D.YEST}' THEN CUS_CUST_ID_AFF END) AS lt_active_curr,
-    COUNT(DISTINCT CASE WHEN CAST(DT AS DATE) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN CUS_CUST_ID_AFF END) AS lt_active_prev
+    SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.CUR}' AND '${D.YEST}'      THEN NMV_AFF ELSE 0 END) AS lt_nmv_curr,
+    SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_AFF ELSE 0 END) AS lt_nmv_prev
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
   WHERE CAST(DT AS DATE) >= '${D.PREV}'
     AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND SEGMENT NOT IN ('KAM','Potential KAM') GROUP BY 1
+),
+kam_excl AS (
+  SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_TYPE`
+  UNION DISTINCT
+  SELECT DISTINCT cus_cust_id_aff, sit_site_id
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_KA_CATEGORIES`
+  WHERE segment = 'Potential KAM'
+),
+lt_active AS (
+  SELECT s.SIT_SITE_ID,
+    COUNT(DISTINCT CASE WHEN s.ORD_CREATED_DT BETWEEN '${D.CUR}' AND '${D.YEST}'      THEN s.AFFILIATE_ID END) AS lt_active_curr,
+    COUNT(DISTINCT CASE WHEN s.ORD_CREATED_DT BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN s.AFFILIATE_ID END) AS lt_active_prev
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s
+  LEFT JOIN kam_excl e ON s.AFFILIATE_ID = e.affiliate_id AND s.SIT_SITE_ID = e.sit_site_id
+  WHERE e.affiliate_id IS NULL
+    AND s.AFFILIATE_ID IS NOT NULL AND s.AFFILIATE_ID != 0
+    AND s.ORD_CREATED_DT >= '${D.PREV}'
+    AND s.SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+  GROUP BY 1
 )
 SELECT t.SIT_SITE_ID, t.nmv_curr, t.ts_curr, t.nmv_prev, t.ts_prev,
-  l.lt_nmv_curr, l.lt_nmv_prev, l.lt_active_curr, l.lt_active_prev
-FROM total t LEFT JOIN lt l USING(SIT_SITE_ID)
+  n.lt_nmv_curr, n.lt_nmv_prev, a.lt_active_curr, a.lt_active_prev
+FROM total t
+LEFT JOIN lt_nmv n USING(SIT_SITE_ID)
+LEFT JOIN lt_active a USING(SIT_SITE_ID)
 '@
 
 $sqlMap["nmv_pacing"] = d @'
