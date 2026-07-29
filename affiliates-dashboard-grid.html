@@ -2671,52 +2671,7 @@ function renderChurn(site, gran='monthly') {
   const lastEst=d.mon.est.filter(v=>v!=null).at(-1);
   const prevOmw=d.mon.omw.filter(v=>v!=null).at(-2);
 
-  document.getElementById(`churn-kpi-${site}`).innerHTML = `
-    <table class="kpi-table">
-      <thead><tr>
-        <th>Métrica</th>
-        <th>MTD (${DAYS_ELAPS}d)</th>
-        <th>Δ vs ${PREV_MTD_LABEL}</th>
-      </tr></thead>
-      <tbody>
-        <tr>
-          <td>
-            <div class="mname"><span class="dot" style="background:${C.blue}"></span>% Churn de nuevos</div>
-          </td>
-          <td class="num">${fmtP(mtd.pnew)}</td>
-          <td>${deltaVsAbrPct(mtd.pnew,prev.pnew,false)}</td>
-        </tr>
-        <tr>
-          <td>
-            <div class="mname"><span class="dot" style="background:${C.red}"></span>new (1m)</div>
-          </td>
-          <td class="num">${fmtP(omwMtd)}</td>
-          <td>${deltaVsAbrPct(omwMtd, prevOmwMtd, false)}</td>
-        </tr>
-        <tr>
-          <td>
-            <div class="mname"><span class="dot" style="background:${C.orange}"></span>Early (2–3m)</div>
-          </td>
-          <td class="num">${fmtP(earMtd)}</td>
-          <td>${deltaVsAbrPct(earMtd, prevEarMtd, false)}</td>
-        </tr>
-        <tr>
-          <td>
-            <div class="mname"><span class="dot" style="background:${C.yellow}"></span>Mid (4–6m)</div>
-          </td>
-          <td class="num">${fmtP(midMtd)}</td>
-          <td>${deltaVsAbrPct(midMtd, prevMidMtd, false)}</td>
-        </tr>
-        <tr>
-          <td>
-            <div class="mname"><span class="dot" style="background:${C.green}"></span>Established (7m+)</div>
-          </td>
-          <td class="num">${fmtP(estMtd)}</td>
-          <td>${deltaVsAbrPct(estMtd, prevEstMtd, true)}</td>
-        </tr>
-      </tbody>
-    </table>
-    <div class="footnote" style="margin-top:8px">⚠ Churn no tiene proyeccion ni target: el churn definitivo del mes se conoce recien al cierre (un afiliado que no vendio del 1 al ${DAYS_ELAPS} todavia puede vender antes de fin de mes). Los valores MTD son churners <em>potenciales</em> — estimacion parcial, no dato definitivo.</div>`;
+  document.getElementById(`churn-kpi-${site}`).innerHTML = ``;
 
 }
 
