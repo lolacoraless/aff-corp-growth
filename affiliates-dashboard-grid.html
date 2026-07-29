@@ -2532,6 +2532,13 @@ function renderMktContext(site) {
   const labels  = d.months.slice(-n12);
   const nmv     = (d.mon.nmv      || []).slice(-n12);
   const sessions= (d.mon.sessions || []).slice(-n12);
+  // Overwrite last (current month) entry with MTD value if null/missing
+  const mMtd = d.mtd || {};
+  const li = labels.length - 1;
+  if (li >= 0) {
+    if (nmv[li] == null && mMtd.nmv != null)      nmv[li]      = mMtd.nmv;
+    if (sessions[li] == null && mMtd.sessions != null) sessions[li] = mMtd.sessions;
+  }
   mkChart(`mkt-main-${site}`, {
     type:'bar',
     data:{labels, datasets:[
