@@ -483,13 +483,15 @@ WITH total AS (
 lt AS (
   SELECT SIT_SITE_ID,
     SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.CUR}' AND '${D.YEST}' THEN NMV_AFF ELSE 0 END) AS lt_nmv_curr,
-    SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_AFF ELSE 0 END) AS lt_nmv_prev
+    SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_AFF ELSE 0 END) AS lt_nmv_prev,
+    COUNT(DISTINCT CASE WHEN CAST(DT AS DATE) BETWEEN '${D.CUR}' AND '${D.YEST}' THEN CUS_CUST_ID_AFF END) AS lt_active_curr,
+    COUNT(DISTINCT CASE WHEN CAST(DT AS DATE) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN CUS_CUST_ID_AFF END) AS lt_active_prev
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
   WHERE CAST(DT AS DATE) >= '${D.PREV}'
     AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND SEGMENT NOT IN ('KAM','Potential KAM') GROUP BY 1
 )
 SELECT t.SIT_SITE_ID, t.nmv_curr, t.ts_curr, t.nmv_prev, t.ts_prev,
-  l.lt_nmv_curr, l.lt_nmv_prev
+  l.lt_nmv_curr, l.lt_nmv_prev, l.lt_active_curr, l.lt_active_prev
 FROM total t LEFT JOIN lt l USING(SIT_SITE_ID)
 '@
 
