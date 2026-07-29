@@ -1283,7 +1283,7 @@ function renderBeh(site, gran='monthly') {
 
   // Compute max absolute for datalabel threshold
   const allAbsVals = [
-    ...src.new, ...src.rec, ...src.ret, ...src.chu
+    ...sliceData(src.new), ...sliceData(src.rec), ...sliceData(src.ret), ...sliceData(src.chu)
   ].map(v => Math.abs(v || 0));
   const maxVal = Math.max(...allAbsVals) || 1;
   const threshold = maxVal * 0.04; // hide label if segment < 4% of max
@@ -1322,7 +1322,7 @@ function renderBeh(site, gran='monthly') {
         // Positivos: mismo stack 's' — se apilan arriba de cero
         {
           label: 'Recurrentes',
-          data: src.ret,
+          data: sliceData(src.ret),
           backgroundColor: '#6B7280',
           borderRadius: 0, borderSkipped: false,
           stack: 's', order: 2,
@@ -1330,7 +1330,7 @@ function renderBeh(site, gran='monthly') {
         },
         {
           label: 'Recuperados',
-          data: src.rec,
+          data: sliceData(src.rec),
           backgroundColor: '#9CA3AF',
           borderRadius: 0, borderSkipped: false,
           stack: 's', order: 2,
@@ -1338,7 +1338,7 @@ function renderBeh(site, gran='monthly') {
         },
         {
           label: 'New',
-          data: src.new,
+          data: sliceData(src.new),
           backgroundColor: '#1F2937',
           borderRadius: 0, borderSkipped: false,
           stack: 's', order: 2,
@@ -1347,7 +1347,7 @@ function renderBeh(site, gran='monthly') {
         // Negativos: mismo stack 's' — Chart.js los coloca bajo cero automáticamente
         {
           label: 'Inactive',
-          data: src.chu.map(v => -v),
+          data: sliceData(src.chu).map(v => -v),
           backgroundColor: '#EF4444',
           borderRadius: 0, borderSkipped: false,
           stack: 's', order: 2,
@@ -1356,7 +1356,7 @@ function renderBeh(site, gran='monthly') {
         // QR como línea en eje secundario — NO stacked
         {
           label: 'Quick Ratio',
-          data: src.qr,
+          data: sliceData(src.qr),
           type: 'line',
           yAxisID: 'yqr',
           borderColor: C.orange,
@@ -1587,7 +1587,7 @@ function renderBeh(site, gran='monthly') {
   // ─────────────────────────────────────────────────────────────────────────
 
   document.getElementById(`beh-kpi-${site}`).innerHTML = `
-    <div class="card-title" style="margin-bottom:10px">Métricas MTD · Targets · Pacing</div>
+    <div style="font-size:12px;font-weight:700;color:#374151;padding:12px 4px 4px;letter-spacing:.01em">Métricas MTD · Targets · Pacing</div>
     <table class="kpi-table">
       <thead><tr>
         <th>Métrica</th>
