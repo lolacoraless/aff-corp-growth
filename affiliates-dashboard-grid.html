@@ -152,7 +152,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .kpi-table{width:100%;border-collapse:collapse;font-size:12px}
 .kpi-table th{text-align:left;padding:7px 9px;font-size:10.5px;text-transform:uppercase;
   letter-spacing:.5px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);
-  background:#FAFAFA;white-space:nowrap}
+  background:#FAFAFA;word-break:break-word}
 .kpi-table td{padding:8px 9px;border-bottom:1px solid #F3F4F7;vertical-align:middle}
 .kpi-table tr:last-child td{border-bottom:none}
 .kpi-table tr:hover td{background:#FAFAFA}
@@ -1684,7 +1684,7 @@ function renderBeh(site, gran='monthly') {
           </td>
           <td class="num" style="color:#7C3AED;font-size:15px">
             ${qrR != null ? fmtN(qrR) : '—'}
-            ${qrR != null ? `<div style="font-size:9px;color:var(--muted);font-weight:400;margin-top:1px">${windowLabel} · (${fmtK(rol.new_30d)}+${fmtK(rol.rec_30d)})/${fmtK(rol.chu_30d)}</div>` : ''}
+
           </td>
           <td>${qrR != null && aprQr != null
             ? `<span class="mom ${qrR >= aprQr ? 'pos' : 'neg'}">${qrR >= aprQr ? '▲' : '▼'} ${Math.abs(qrR - aprQr).toFixed(2)} vs cierre ${PREV_MON_SHORT}</span>`
