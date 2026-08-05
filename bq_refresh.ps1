@@ -723,6 +723,7 @@ WITH monthly_active AS (
   FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
   WHERE ORD_STATUS='paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
     AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.DEEP}'
+    AND ORD_CREATED_DT < DATE_TRUNC(CURRENT_DATE(),MONTH)
     AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)
       OR (ORD_CREATED_DT<'${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))
   GROUP BY 1,2,3
@@ -753,7 +754,7 @@ SELECT month, SIT_SITE_ID, active_prev, churned, churned_new, churned_recovered,
   ROUND(SAFE_DIVIDE(churned_new,churned)*100,1) AS pct_churned_new,
   ROUND(SAFE_DIVIDE(churned_recovered,churned)*100,1) AS pct_churned_recovered,
   ROUND(SAFE_DIVIDE(churned_recurrent,churned)*100,1) AS pct_churned_recurrent
-FROM metrics WHERE month >= '${D.HIST}' ORDER BY SIT_SITE_ID, month
+FROM metrics WHERE month >= '${D.HIST}' AND month < DATE_TRUNC(CURRENT_DATE(),MONTH) ORDER BY SIT_SITE_ID, month
 '@
 
 $sqlMap["churn_comp"] = d @'
@@ -762,6 +763,7 @@ WITH monthly_active AS (
   FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
   WHERE ORD_STATUS='paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
     AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.DEEP}'
+    AND ORD_CREATED_DT < DATE_TRUNC(CURRENT_DATE(),MONTH)
     AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)
       OR (ORD_CREATED_DT<'${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))
   GROUP BY 1,2,3
@@ -784,7 +786,7 @@ SELECT churn_month AS month, SIT_SITE_ID, COUNT(*) AS total_churned,
   ROUND(COUNTIF(months_active BETWEEN 2 AND 3)/COUNT(*)*100,1) AS pct_early,
   ROUND(COUNTIF(months_active BETWEEN 4 AND 6)/COUNT(*)*100,1) AS pct_mid,
   ROUND(COUNTIF(months_active>=7)/COUNT(*)*100,1) AS pct_established
-FROM churners WHERE churn_month >= '${D.HIST}' GROUP BY 1,2 ORDER BY 1,2
+FROM churners WHERE churn_month >= '${D.HIST}' AND churn_month < DATE_TRUNC(CURRENT_DATE(),MONTH) GROUP BY 1,2 ORDER BY 1,2
 '@
 
 $sqlMap["churn_mtd"] = d @'
