@@ -836,6 +836,118 @@ SELECT SIT_SITE_ID,
 FROM window_sales GROUP BY 1
 '@
 
+$LINK_PATHS = "((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'`$.select_value') IN ('copy_link','copy_id')) OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link' OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link','/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code','/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion') OR PATH_NAME='/share/action')"
+
+$sqlMap["link_gen_monthly"] = d @'
+SELECT FORMAT_DATE('%Y-%m',EVENT_DT) AS mes, SIT_SITE_ID, COUNT(DISTINCT CUS_CUST_ID) AS generadores_links
+FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
+WHERE EVENT_DT >= '${D.HIST}' AND EVENT_DT <= CURRENT_DATE('-4')
+  AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+  AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))
+    OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'
+    OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',
+       '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',
+       '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')
+    OR PATH_NAME='/share/action')
+GROUP BY mes, SIT_SITE_ID ORDER BY mes, SIT_SITE_ID
+'@
+
+$sqlMap["link_gen_daily"] = d @'
+SELECT EVENT_DT, SIT_SITE_ID, COUNT(DISTINCT CUS_CUST_ID) AS generadores_links
+FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
+WHERE EVENT_DT >= DATE_SUB(CURRENT_DATE('-4'), INTERVAL 35 DAY) AND EVENT_DT <= CURRENT_DATE('-4')
+  AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+  AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))
+    OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'
+    OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',
+       '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',
+       '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')
+    OR PATH_NAME='/share/action')
+GROUP BY EVENT_DT, SIT_SITE_ID ORDER BY EVENT_DT, SIT_SITE_ID
+'@
+
+$sqlMap["link_gen_mtd_comp"] = d @'
+SELECT period, SIT_SITE_ID, COUNT(DISTINCT CUS_CUST_ID) AS generadores_links
+FROM (
+  SELECT 'curr' AS period, SIT_SITE_ID, CUS_CUST_ID FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
+  WHERE EVENT_DT >= DATE_TRUNC(CURRENT_DATE('-4'),MONTH) AND EVENT_DT <= CURRENT_DATE('-4')
+    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))
+      OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'
+      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',
+         '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',
+         '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')
+      OR PATH_NAME='/share/action')
+  UNION ALL
+  SELECT 'prev' AS period, SIT_SITE_ID, CUS_CUST_ID FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
+  WHERE EVENT_DT >= DATE_TRUNC(DATE_SUB(CURRENT_DATE('-4'),INTERVAL 1 MONTH),MONTH)
+    AND EVENT_DT <= DATE_ADD(
+      DATE_TRUNC(DATE_SUB(CURRENT_DATE('-4'),INTERVAL 1 MONTH),MONTH),
+      INTERVAL DATE_DIFF(CURRENT_DATE('-4'),DATE_TRUNC(CURRENT_DATE('-4'),MONTH),DAY) DAY)
+    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))
+      OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'
+      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',
+         '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',
+         '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')
+      OR PATH_NAME='/share/action')
+)
+GROUP BY period, SIT_SITE_ID ORDER BY SIT_SITE_ID, period
+'@
+
+$sqlMap["link_gen_by_segment"] = d @'
+WITH monthly_active AS (
+  SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT,MONTH) AS month, AFFILIATE_ID
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
+  WHERE ORD_STATUS='paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.DEEP}'
+    AND ORD_CREATED_DT <= CURRENT_DATE('-4')
+    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)
+      OR (ORD_CREATED_DT<'${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))
+  GROUP BY 1,2,3
+),
+first_active AS (SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(month) AS first_month FROM monthly_active GROUP BY 1,2),
+curr_segs AS (
+  SELECT curr.SIT_SITE_ID, curr.month, curr.AFFILIATE_ID,
+    CASE WHEN fa.first_month=curr.month THEN 'new'
+         WHEN prev.AFFILIATE_ID IS NOT NULL THEN 'recurrent'
+         ELSE 'recovered' END AS segment
+  FROM monthly_active curr
+  LEFT JOIN first_active fa USING(SIT_SITE_ID,AFFILIATE_ID)
+  LEFT JOIN monthly_active prev ON curr.AFFILIATE_ID=prev.AFFILIATE_ID AND curr.SIT_SITE_ID=prev.SIT_SITE_ID
+    AND prev.month=DATE_SUB(curr.month,INTERVAL 1 MONTH)
+),
+churn_segs AS (
+  SELECT prev.SIT_SITE_ID, DATE_ADD(prev.month,INTERVAL 1 MONTH) AS month, prev.AFFILIATE_ID, 'churned' AS segment
+  FROM monthly_active prev
+  LEFT JOIN monthly_active curr ON prev.AFFILIATE_ID=curr.AFFILIATE_ID AND prev.SIT_SITE_ID=curr.SIT_SITE_ID
+    AND curr.month=DATE_ADD(prev.month,INTERVAL 1 MONTH)
+  WHERE curr.AFFILIATE_ID IS NULL
+    AND DATE_ADD(prev.month,INTERVAL 1 MONTH) < DATE_TRUNC(CURRENT_DATE(),MONTH)
+),
+all_segs AS (SELECT * FROM curr_segs UNION ALL SELECT * FROM churn_segs),
+link_events AS (
+  SELECT SIT_SITE_ID, DATE_TRUNC(EVENT_DT,MONTH) AS month, CUS_CUST_ID, COUNT(*) AS links_cnt
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
+  WHERE EVENT_DT >= '${D.HIST}' AND EVENT_DT <= CURRENT_DATE('-4')
+    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))
+      OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'
+      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',
+         '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',
+         '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')
+      OR PATH_NAME='/share/action')
+  GROUP BY 1,2,3
+)
+SELECT s.SIT_SITE_ID AS sit_site_id, FORMAT_DATE('%Y-%m',s.month) AS mes, s.segment,
+  ROUND(SAFE_DIVIDE(SUM(COALESCE(le.links_cnt,0)),
+    NULLIF(COUNT(DISTINCT IF(le.CUS_CUST_ID IS NOT NULL,s.AFFILIATE_ID,NULL)),0)),1) AS links_por_usuario
+FROM all_segs s
+LEFT JOIN link_events le ON s.AFFILIATE_ID=le.CUS_CUST_ID AND s.SIT_SITE_ID=le.SIT_SITE_ID AND s.month=le.month
+WHERE s.month >= '${D.HIST}'
+GROUP BY 1,2,3 ORDER BY mes,sit_site_id,segment
+'@
+
 $sqlMap["mkt_context"] = d @'
 SELECT
   KPI_ID,
@@ -968,10 +1080,14 @@ $data = [ordered]@{
     act2            = (Parse-BQResult $rawResults["act2"].json)
     act_source      = (Parse-BQResult $rawResults["act_source"].json)
     act_new_days    = (Parse-BQResult $rawResults["act_new_days"].json)
-    churn         = (Parse-BQResult $rawResults["churn"].json)
-    churn_comp    = (Parse-BQResult $rawResults["churn_comp"].json)
-    churn_mtd     = (Parse-BQResult $rawResults["churn_mtd"].json)
-    mkt_context   = (Parse-BQResult $rawResults["mkt_context"].json)
+    churn              = (Parse-BQResult $rawResults["churn"].json)
+    churn_comp         = (Parse-BQResult $rawResults["churn_comp"].json)
+    churn_mtd          = (Parse-BQResult $rawResults["churn_mtd"].json)
+    link_gen_monthly   = (Parse-BQResult $rawResults["link_gen_monthly"].json)
+    link_gen_daily     = (Parse-BQResult $rawResults["link_gen_daily"].json)
+    link_gen_mtd_comp  = (Parse-BQResult $rawResults["link_gen_mtd_comp"].json)
+    link_gen_by_segment= (Parse-BQResult $rawResults["link_gen_by_segment"].json)
+    mkt_context        = (Parse-BQResult $rawResults["mkt_context"].json)
 }
 
 $snapshot = [ordered]@{ savedAt=$tsNow; savedAtDisplay=$dispNow; data=$data }
@@ -981,7 +1097,9 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
 @('behaviour','beh_mtd','beh_pacing','qr_rolling','registrations','reg_mtd',
   'reg_pacing','landing_traffic','landing_pacing','spend_pom',
   'nmv_monthly','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
-  'act1','act2','act_source','act_new_days','churn','churn_comp','churn_mtd','mkt_context') | ForEach-Object {
+  'act1','act2','act_source','act_new_days','churn','churn_comp','churn_mtd',
+  'link_gen_monthly','link_gen_daily','link_gen_mtd_comp','link_gen_by_segment',
+  'mkt_context') | ForEach-Object {
     $snapshotJson = $snapshotJson.Replace("`"$_`":null", "`"$_`":[]")
 }
 
