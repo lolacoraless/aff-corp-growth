@@ -428,7 +428,7 @@ beh AS (
 ),
 seg_nmv AS (
   SELECT DATE_TRUNC(CAST(DT AS DATE),MONTH) AS mes, SIT_SITE_ID,
-    CASE WHEN SEGMENT IN ('KAM','Potential KAM') THEN 'nlt' ELSE 'lt' END AS seg,
+    CASE WHEN SUB_DEFINITION = 'LT' THEN 'lt' ELSE 'nlt' END AS seg,
     SUM(NMV_AFF) AS nmv_aff,
     COUNT(DISTINCT IF(CUS_CUST_ID_AFF > 0, CUS_CUST_ID_AFF, NULL)) AS nlt_active
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
@@ -508,7 +508,7 @@ lt_nmv AS (
     SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_AFF ELSE 0 END) AS lt_nmv_prev
   FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
   WHERE CAST(DT AS DATE) >= '${D.PREV}'
-    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND SEGMENT NOT IN ('KAM','Potential KAM') GROUP BY 1
+    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND SUB_DEFINITION = 'LT' GROUP BY 1
 ),
 kam_excl AS (
   SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id
