@@ -22,12 +22,7 @@ $pdDay   = [Math]::Max(1, [Math]::Min($now.Day - 1, $prevLast))
 $PREV_DAY = (Get-Date -Year $PREV_DT.Year -Month $PREV_DT.Month -Day $pdDay).ToString("yyyy-MM-dd")
 $dow = [int]$now.DayOfWeek; $dtm = if($dow -eq 0){6}else{$dow-1}
 $W8  = $now.AddDays(-$dtm - 84).ToString("yyyy-MM-dd")  # 12 semanas atras (7x12=84)
-# Registros: AFFILIATE_REGISTRATION_CHANNEL actualiza ~15:00h
-# Antes de las 15h el dia de ayer no esta en la tabla — usar D-2 para mantener periodos simetricos
-$REG_OFFSET   = if ($now.Hour -ge 15) { 1 } else { 2 }
-$YEST_REG     = $now.AddDays(-$REG_OFFSET).ToString("yyyy-MM-dd")
-$pdDayReg     = [Math]::Min(([DateTime]$YEST_REG).Day, $prevLast)
-$PREV_DAY_REG = (Get-Date -Year $PREV_DT.Year -Month $PREV_DT.Month -Day $pdDayReg).ToString("yyyy-MM-dd")
+# Registros: las fechas de reg_mtd se calculan directamente en BQ con CURRENT_DATE('-3')
 
 Write-Host ""
 Write-Host "=== AFFILIATES DASHBOARD - BQ REFRESH ===" -ForegroundColor Cyan
@@ -52,8 +47,6 @@ function d($s) {
     $r = $r.Replace('${D.M7}',           $M7)
     $r = $r.Replace('${D.DAY_OF_MONTH}', [string]$DAY_OF_MONTH)
     $r = $r.Replace('${D.W8}',           $W8)
-    $r = $r.Replace('${D.YEST_REG}',     $YEST_REG)
-    $r = $r.Replace('${D.PREV_DAY_REG}', $PREV_DAY_REG)
     return $r
 }
 
@@ -280,17 +273,19 @@ GROUP BY ALL ORDER BY 1,2,3
 '@
 
 $sqlMap["reg_mtd"] = d @'
--- Tabla actualiza ~15:00h → YEST_REG = D-2 antes de las 15h, D-1 despues
--- Garantiza periodos simetricos: misma cantidad de dias en curr y prev
+-- D-1 calculado en BQ (UTC-3), independiente del horario de ejecucion del script
+-- Periodos simetricos: curr = inicio mes → D-1 | prev = mismo rango, mes anterior
 SELECT site_id, origen, origen_grouped, COUNT(*) AS users, 'curr' AS period
 FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`
-WHERE DATE(ds) BETWEEN '${D.CUR}' AND '${D.YEST_REG}'
+WHERE DATE(ds) BETWEEN DATE_TRUNC(CURRENT_DATE('-3'), MONTH)
+                   AND DATE_SUB(CURRENT_DATE('-3'), INTERVAL 1 DAY)
   AND site_id IN ('MLB','MLM','MLC','MLA')
 GROUP BY ALL
 UNION ALL
 SELECT site_id, origen, origen_grouped, COUNT(*) AS users, 'prev' AS period
 FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`
-WHERE DATE(ds) BETWEEN '${D.PREV}' AND '${D.PREV_DAY_REG}'
+WHERE DATE(ds) BETWEEN DATE_TRUNC(DATE_SUB(CURRENT_DATE('-3'), INTERVAL 1 MONTH), MONTH)
+                   AND DATE_SUB(DATE_SUB(CURRENT_DATE('-3'), INTERVAL 1 DAY), INTERVAL 1 MONTH)
   AND site_id IN ('MLB','MLM','MLC','MLA')
 GROUP BY ALL
 '@
@@ -959,7 +954,7 @@ SELECT
 FROM `meli-bi-data.WHOWNER.DM_MKT_KPI_STORE`
 WHERE KPI_ID IN ('NMV-UMM-MARKETPLACE', 'SESSIONS-AMPL')
   AND SIT_SITE_ID IN ('MLB', 'MLM', 'MLC', 'MLA')
-  AND PERIOD IN ('MONTHLY', 'MTD')
+  AND (PERIOD = 'MONTHLY' OR (PERIOD = 'MTD' AND DT_TO >= DATE_TRUNC(CURRENT_DATE(), MONTH) AND DT_TO <= CURRENT_DATE()))
   AND COMPARISON = 'PP'
   AND ((KPI_ID = 'NMV-UMM-MARKETPLACE' AND CURRENCY = 'LC')
     OR (KPI_ID = 'SESSIONS-AMPL' AND CURRENCY = '-1'))
@@ -1006,7 +1001,8 @@ $jobs.Values | Wait-Job | ForEach-Object {
     $status = if ($r.ok) { "OK  " } else { "FAIL" }
     $detail = if ($r.ok) { "$([Math]::Round($r.json.Length/1024,0)) KB" } else { $r.error.Substring(0,[Math]::Min(500,$r.error.Length)) }
     $qDur = if ($null -ne $r.duration) { $r.duration } else { "?" }
-    Write-Host ("  [{0,-22}] {1}  {2,5}s query  {3,5}s total  {4}" -f $r.name, $status, $qDur, $sec, $detail)
+    $lineColor = if ($r.ok) { "Gray" } else { "Red" }
+    Write-Host ("  [{0,-22}] {1}  {2,5}s query  {3,5}s total  {4}" -f $r.name, $status, $qDur, $sec, $detail) -ForegroundColor $lineColor
     $rawResults[$r.name] = $r
     Remove-Job $_ -Force
 }
