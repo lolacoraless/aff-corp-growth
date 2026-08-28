@@ -329,6 +329,11 @@ SELECT
 FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_REGISTRATION_JOURNEY` b
 WHERE page = 'landing'
   AND ds >= '${D.HIST}'
+  AND (
+    ds < '2026-04-01'
+    OR path = '/splinter/landing'
+    OR (path = '/sbc/site-merch/landing' AND ds >= '2026-08-01')
+  )
 GROUP BY ALL
 '@
 
@@ -356,6 +361,11 @@ FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_REGISTRATION_JOURNEY`
 WHERE page = 'landing'
   AND ds >= '${D.M6}'
   AND ds < '${D.CUR}'
+  AND (
+    ds < '2026-04-01'
+    OR path = '/splinter/landing'
+    OR (path = '/sbc/site-merch/landing' AND ds >= '2026-08-01')
+  )
 GROUP BY site, month_start, origen
 ORDER BY site, month_start, origen
 '@
