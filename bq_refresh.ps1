@@ -475,6 +475,62 @@ FROM ts t JOIN beh b USING(mes,SIT_SITE_ID)
 ORDER BY mes, SIT_SITE_ID, seg
 '@
 
+# NMV x aff de LT desagregado por estado del afiliado (new/recurrent/recovered).
+# Mismo criterio de "activo LT" que nmv_monthly (BT_AFFI_SALES_ATTRIBUTION_DAILY + exclusion
+# KAM/Potential KAM), pero clasificando cada afiliado-mes segun si es su primera venta,
+# si vendio tambien el mes anterior, o si volvio tras estar ausente.
+$sqlMap["nmv_lt_by_status"] = d @'
+WITH kam_excl AS (
+  SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_TYPE`
+  UNION DISTINCT
+  SELECT DISTINCT cus_cust_id_aff, sit_site_id
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_KA_CATEGORIES`
+  WHERE segment = 'Potential KAM'
+),
+monthly_sales AS (
+  SELECT s.SIT_SITE_ID, s.AFFILIATE_ID, DATE_TRUNC(s.ORD_CREATED_DT, MONTH) AS mes
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s
+  LEFT JOIN kam_excl e ON s.AFFILIATE_ID = e.affiliate_id AND s.SIT_SITE_ID = e.sit_site_id
+  WHERE e.affiliate_id IS NULL
+    AND s.AFFILIATE_ID IS NOT NULL AND s.AFFILIATE_ID != 0
+    AND s.ORD_CREATED_DT >= '${D.HIST}'
+    AND s.SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+  GROUP BY 1,2,3
+),
+first_sale AS (
+  SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(mes) AS first_month
+  FROM monthly_sales GROUP BY 1,2
+),
+segments AS (
+  SELECT c.SIT_SITE_ID, c.AFFILIATE_ID, c.mes,
+    CASE WHEN f.first_month = c.mes THEN 'new'
+         WHEN p.AFFILIATE_ID IS NULL THEN 'recovered'
+         ELSE 'recurrent' END AS segment
+  FROM monthly_sales c
+  JOIN first_sale f USING (SIT_SITE_ID, AFFILIATE_ID)
+  LEFT JOIN monthly_sales p
+    ON c.SIT_SITE_ID = p.SIT_SITE_ID AND c.AFFILIATE_ID = p.AFFILIATE_ID
+    AND p.mes = DATE_SUB(c.mes, INTERVAL 1 MONTH)
+),
+nmv AS (
+  SELECT DATE_TRUNC(CAST(DT AS DATE), MONTH) AS mes, SIT_SITE_ID,
+    CAST(CUS_CUST_ID_AFF AS INT64) AS AFFILIATE_ID, SUM(NMV_AFF) AS nmv_aff
+  FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
+  WHERE CAST(DT AS DATE) >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND SUB_DEFINITION = 'LT'
+  GROUP BY 1,2,3
+)
+SELECT s.mes, s.SIT_SITE_ID, s.segment,
+  COUNT(DISTINCT s.AFFILIATE_ID) AS active_aff,
+  SUM(n.nmv_aff) AS nmv_aff,
+  SAFE_DIVIDE(SUM(n.nmv_aff), COUNT(DISTINCT s.AFFILIATE_ID)) AS npa
+FROM segments s
+LEFT JOIN nmv n ON s.SIT_SITE_ID = n.SIT_SITE_ID AND s.AFFILIATE_ID = n.AFFILIATE_ID AND s.mes = n.mes
+GROUP BY 1,2,3
+ORDER BY mes, SIT_SITE_ID, segment
+'@
+
 $sqlMap["nmv_weekly"] = d @'
 WITH ts AS (
   SELECT EXTRACT(YEAR FROM DT) AS yr, EXTRACT(ISOWEEK FROM DT) AS wk,
@@ -1078,6 +1134,7 @@ $data = [ordered]@{
     landing_pacing  = (Parse-BQResult $rawResults["landing_pacing"].json)
     spend_pom       = (Parse-BQResult $rawResults["spend_pom"].json)
     nmv_monthly   = (Parse-BQResult $rawResults["nmv_monthly"].json)
+    nmv_lt_by_status = (Parse-BQResult $rawResults["nmv_lt_by_status"].json)
     nmv_weekly    = (Parse-BQResult $rawResults["nmv_weekly"].json)
     nmv_mtd       = (Parse-BQResult $rawResults["nmv_mtd"].json)
     nmv_pacing      = (Parse-BQResult $rawResults["nmv_pacing"].json)
@@ -1102,7 +1159,7 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
 # PS5.1 bug: empty @() arrays serialize as null instead of []. Fix all data keys.
 @('behaviour','beh_mtd','beh_pacing','qr_rolling','registrations','reg_mtd',
   'reg_pacing','landing_traffic','landing_pacing','spend_pom',
-  'nmv_monthly','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
+  'nmv_monthly','nmv_lt_by_status','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
   'act1','act2','act_source','act_new_days','churn','churn_comp','churn_mtd',
   'link_gen_monthly','link_gen_daily','link_gen_mtd_comp','link_gen_by_segment',
   'mkt_context') | ForEach-Object {
