@@ -479,6 +479,18 @@ ORDER BY mes, SIT_SITE_ID, seg
 # Mismo criterio de "activo LT" que nmv_monthly (BT_AFFI_SALES_ATTRIBUTION_DAILY + exclusion
 # KAM/Potential KAM), pero clasificando cada afiliado-mes segun si es su primera venta,
 # si vendio tambien el mes anterior, o si volvio tras estar ausente.
+#
+# IMPORTANTE — por que el NMV viene de BT_AFFI_SALES_ATTRIBUTION_DAILY y no de
+# BT_SC_AFFILIATE_BASE (a diferencia de nmv_monthly/nmv_mtd): BT_SC_AFFILIATE_BASE solo
+# tiene granularidad por afiliado (CUS_CUST_ID_AFF) para el top ~50 LT de cada site; el
+# resto del long tail queda agrupado en un unico bucket CUS_CUST_ID_AFF=0. Al intentar
+# joinear ese bucket contra afiliados individuales (segments, por AFFILIATE_ID real) se
+# pierde ~94% del NMV (verificado ago-2026: solo 6.2% del NMV LT total quedaba capturado).
+# BT_AFFI_SALES_ATTRIBUTION_DAILY si tiene granularidad real por afiliado, asi que se usa
+# esa misma NMV (Enigma desde D.ENIGMA, TD7D antes) que ya usan monthly_active/earners en
+# link_gen_by_segment y link_gen_earnings_by_status. Trade-off: el filtro LT pasa a ser el
+# anti-join aproximado (excluye KAM/Potential KAM, no excluye Content/Corporate) en vez del
+# SUB_DEFINITION='LT' exacto — misma aproximacion que ya acepta el dashboard para active_lt.
 $sqlMap["nmv_lt_by_status"] = d @'
 WITH kam_excl AS (
   SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id
@@ -489,13 +501,18 @@ WITH kam_excl AS (
   WHERE segment = 'Potential KAM'
 ),
 monthly_sales AS (
-  SELECT s.SIT_SITE_ID, s.AFFILIATE_ID, DATE_TRUNC(s.ORD_CREATED_DT, MONTH) AS mes
+  SELECT s.SIT_SITE_ID, s.AFFILIATE_ID, DATE_TRUNC(s.ORD_CREATED_DT, MONTH) AS mes,
+    SUM(CASE WHEN s.ORD_CREATED_DT >= '${D.ENIGMA}' THEN s.NMV_ENIGMA_TOTAL_AMT_LC
+             ELSE s.NMV_TD7DCALIB_TOTAL_AMT_LC END) AS nmv_aff
   FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s
   LEFT JOIN kam_excl e ON s.AFFILIATE_ID = e.affiliate_id AND s.SIT_SITE_ID = e.sit_site_id
   WHERE e.affiliate_id IS NULL
     AND s.AFFILIATE_ID IS NOT NULL AND s.AFFILIATE_ID != 0
+    AND s.ORD_STATUS = 'paid' AND s.SIT_SITE_ID = s.AFFILIATE_SIT_SITE_ID
     AND s.ORD_CREATED_DT >= '${D.HIST}'
     AND s.SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND ((s.ORD_CREATED_DT >= '${D.ENIGMA}' AND s.NMV_ENIGMA_TOTAL_AMT_LC > 0)
+      OR (s.ORD_CREATED_DT < '${D.ENIGMA}' AND s.NMV_TD7DCALIB_TOTAL_AMT_LC > 0))
   GROUP BY 1,2,3
 ),
 first_sale AS (
@@ -503,7 +520,7 @@ first_sale AS (
   FROM monthly_sales GROUP BY 1,2
 ),
 segments AS (
-  SELECT c.SIT_SITE_ID, c.AFFILIATE_ID, c.mes,
+  SELECT c.SIT_SITE_ID, c.AFFILIATE_ID, c.mes, c.nmv_aff,
     CASE WHEN f.first_month = c.mes THEN 'new'
          WHEN p.AFFILIATE_ID IS NULL THEN 'recovered'
          ELSE 'recurrent' END AS segment
@@ -512,21 +529,12 @@ segments AS (
   LEFT JOIN monthly_sales p
     ON c.SIT_SITE_ID = p.SIT_SITE_ID AND c.AFFILIATE_ID = p.AFFILIATE_ID
     AND p.mes = DATE_SUB(c.mes, INTERVAL 1 MONTH)
-),
-nmv AS (
-  SELECT DATE_TRUNC(CAST(DT AS DATE), MONTH) AS mes, SIT_SITE_ID,
-    CAST(CUS_CUST_ID_AFF AS INT64) AS AFFILIATE_ID, SUM(NMV_AFF) AS nmv_aff
-  FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`
-  WHERE CAST(DT AS DATE) >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
-    AND SUB_DEFINITION = 'LT'
-  GROUP BY 1,2,3
 )
-SELECT s.mes, s.SIT_SITE_ID, s.segment,
-  COUNT(DISTINCT s.AFFILIATE_ID) AS active_aff,
-  SUM(n.nmv_aff) AS nmv_aff,
-  SAFE_DIVIDE(SUM(n.nmv_aff), COUNT(DISTINCT s.AFFILIATE_ID)) AS npa
-FROM segments s
-LEFT JOIN nmv n ON s.SIT_SITE_ID = n.SIT_SITE_ID AND s.AFFILIATE_ID = n.AFFILIATE_ID AND s.mes = n.mes
+SELECT mes, SIT_SITE_ID, segment,
+  COUNT(DISTINCT AFFILIATE_ID) AS active_aff,
+  SUM(nmv_aff) AS nmv_aff,
+  SAFE_DIVIDE(SUM(nmv_aff), COUNT(DISTINCT AFFILIATE_ID)) AS npa
+FROM segments
 GROUP BY 1,2,3
 ORDER BY mes, SIT_SITE_ID, segment
 '@
