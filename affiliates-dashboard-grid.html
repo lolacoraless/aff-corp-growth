@@ -245,8 +245,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .mom-no-data{color:var(--muted);font-style:italic;text-align:center;padding:32px}
 .mom-same-month{background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;
   padding:12px 16px;color:#92400E;font-size:13px;text-align:center}
-.mom-note{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;
-  padding:10px 14px;color:#0C4A6E;font-size:12px;margin-bottom:16px}
+.mom-tip{color:var(--muted);font-weight:400;cursor:help;font-size:11px}
 
 /* Árbol horizontal (izq→der): las cajas crecen en ancho, no en alto — ramas hermanas
    se apilan solo dentro de su propio grupo, sin empujar el resto del árbol hacia abajo.
@@ -3304,7 +3303,6 @@ function renderMoM() {
           La comparación siempre es del más reciente vs el más antiguo
         </div>
       </div>
-      <div class="mom-note">ℹ️ <b>Churn total %</b> = Churneados (N) del mes / Activos totales del mes anterior × 100</div>
       <div id="mom-cards"></div>
     </div>`;
 
@@ -3410,7 +3408,8 @@ function buildMoMCards() {
     { label:'NMV share KA',    get:(s,ym)=>(getNmv(s,ym,'nlt').share_ts||0)*100,  fmt:fmtPct, clip:fmtPct,   rev:false, isPP:true },
     { label:'NMV/Aff LT',      get:(s,ym)=>getNmv(s,ym,'lt').npa||0,   fmt:fmtMomN,  clip:fmtInt,   rev:false },
     { label:'Churneados (N)',   get:(s,ym)=>getC(s,ym).churned||0,      fmt:fmtMomN,  clip:fmtInt,   rev:true  },
-    { label:'Churn total %',   get:(s,ym)=>{ const c=getC(s,ym); return c.churned&&c.active_prev ? c.churned/c.active_prev*100 : 0; }, fmt:v=>v.toFixed(1)+'%', clip:v=>v.toFixed(1)+'%', rev:true, isPP:true },
+    { label:'Churn total %',   get:(s,ym)=>{ const c=getC(s,ym); return c.churned&&c.active_prev ? c.churned/c.active_prev*100 : 0; }, fmt:v=>v.toFixed(1)+'%', clip:v=>v.toFixed(1)+'%', rev:true, isPP:true,
+      tip:'Churn total % = Churneados (N) del mes / Activos totales del mes anterior × 100' },
     { label:'QR calendario',   get:(s,ym)=>getB(s,ym).quick_ratio||0,  fmt:fmtRatio, clip:fmtRatio, rev:false },
   ];
 
@@ -3424,8 +3423,9 @@ function buildMoMCards() {
       const delta = momDelta(vNew, vOld, m.isPP);
       rawRows.push({ label: m.label, vOld, vNew, delta, clip: m.clip });
       const labelClass = 'mom-metric-label' + (m.sub ? ' sub' : '');
+      const tipHTML = m.tip ? ` <span class="mom-tip" title="${m.tip}">(?)</span>` : '';
       return `<tr>
-        <td class="${labelClass}">${m.label}</td>
+        <td class="${labelClass}">${m.label}${tipHTML}</td>
         <td class="mom-value">${m.fmt(vOld)}</td>
         <td class="mom-value">${m.fmt(vNew)}</td>
         <td class="mom-delta">${sem} ${delta}</td>
