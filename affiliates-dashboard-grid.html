@@ -269,7 +269,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .mtree-deltatxt{font-size:11px;font-weight:700;color:#1F2937}
 .mtree-children{display:flex;flex-direction:column;justify-content:center;gap:6px;
   margin-left:20px;padding:10px 0;position:relative}
-.mtree-children::before{content:'';position:absolute;left:0;top:12px;bottom:12px;
+.mtree-children::before{content:'';position:absolute;left:0;
+  top:var(--trunk-top,12px);bottom:var(--trunk-bottom,12px);
   width:0;border-left:2px solid #D1D5DB}
 .mtree-children > .mtree-node::before{content:'';position:absolute;left:-20px;top:50%;
   width:20px;height:2px;background:#D1D5DB;transform:translateY(-1px)}
@@ -3661,6 +3662,27 @@ function buildMoMTreeCards() {
     </div>`).join('');
 
   container.innerHTML = `<div class="mtree-grid">${cards}</div>`;
+  alignTreeConnectors(container);
+}
+
+// La linea vertical de "tronco" (.mtree-children::before) no puede saber por CSS puro
+// donde esta el centro real de la primera/ultima caja hija — si una rama es alta porque
+// tiene su propio subarbol debajo (ej. "Share LT"), el tronco sigue de largo hasta el
+// fondo de ESE subarbol en vez de parar en el centro de la caja de "Share LT", atravesando
+// visualmente las ramas de mas abajo. Se corrige leyendo la geometria ya renderizada y
+// fijando el alto real del tronco via custom properties.
+function alignTreeConnectors(scopeEl) {
+  scopeEl.querySelectorAll('.mtree-children').forEach(cont => {
+    const kids = Array.from(cont.children).filter(c => c.classList.contains('mtree-node'));
+    if (!kids.length) return;
+    const contRect  = cont.getBoundingClientRect();
+    const firstBox  = kids[0].querySelector(':scope > .mtree-box').getBoundingClientRect();
+    const lastBox   = kids[kids.length - 1].querySelector(':scope > .mtree-box').getBoundingClientRect();
+    const topGap    = (firstBox.top + firstBox.height / 2) - contRect.top;
+    const bottomGap = contRect.bottom - (lastBox.top + lastBox.height / 2);
+    cont.style.setProperty('--trunk-top', `${topGap}px`);
+    cont.style.setProperty('--trunk-bottom', `${bottomGap}px`);
+  });
 }
 
 function copyMoMTreeCard(site) {
