@@ -245,6 +245,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .mom-no-data{color:var(--muted);font-style:italic;text-align:center;padding:32px}
 .mom-same-month{background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;
   padding:12px 16px;color:#92400E;font-size:13px;text-align:center}
+.mom-note{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;
+  padding:10px 14px;color:#0C4A6E;font-size:12px;margin-bottom:16px}
 </style>
 </head>
 <body>
@@ -3278,6 +3280,7 @@ function renderMoM() {
           La comparación siempre es del más reciente vs el más antiguo
         </div>
       </div>
+      <div class="mom-note">ℹ️ <b>Churn total %</b> = Churneados (N) del mes / Activos totales del mes anterior × 100</div>
       <div id="mom-cards"></div>
     </div>`;
 
@@ -3340,6 +3343,12 @@ function buildMoMCards() {
     spendMap[k] = parseFloat(r.cost_lc||0);
   }
 
+  const actMap = {};
+  for (const r of snap.act1 || []) {
+    const k = (r.site_id||'') + '_' + (r.mes_reg||'').slice(0,7);
+    actMap[k] = r;
+  }
+
   function getB(site, ym)    { return beh[site+'_'+ym] || {}; }
   function getC(site, ym)    { return churnMap[site+'_'+ym] || {}; }
   function getNmv(site,ym,seg){ return nmv[site+'_'+ym+'_'+seg] || {}; }
@@ -3348,6 +3357,7 @@ function buildMoMCards() {
     return reg[site+'_'+yr+'_'+mo] || {};
   }
   function getSpend(site,ym) { return spendMap[site+'_'+ym] || 0; }
+  function getAct(site,ym)   { return actMap[site+'_'+ym] || {}; }
 
   // ── Metric definitions ──────────────────────────────────────────
   const fmtInt = v => Math.round(v).toString();
@@ -3361,6 +3371,7 @@ function buildMoMCards() {
     { label:'Registros tot.',  get:(s,ym)=>{ const d=getReg(s,ym); return Object.values(d).reduce((a,b)=>a+b,0); }, fmt:fmtMomN, clip:fmtInt, rev:false },
     { label:'— POM',           get:(s,ym)=>getReg(s,ym).POM||0,        fmt:fmtMomN,  clip:fmtInt,   rev:false, sub:true },
     { label:'— Direct',        get:(s,ym)=>getReg(s,ym).Direct||0,     fmt:fmtMomN,  clip:fmtInt,   rev:false, sub:true },
+    { label:'% Activ. mismo mes reg.', get:(s,ym)=>getAct(s,ym).pct_activaron||0, fmt:fmtPct, clip:fmtPct, rev:false, isPP:true },
     { label:'Spend POM',       get:(s,ym)=>getSpend(s,ym),             fmt:fmtMomN,  clip:fmtInt,   rev:false },
     { label:'NMV share all',   get:(s,ym)=>(getNmv(s,ym,'all').share_ts||0)*100,  fmt:fmtPct, clip:fmtPct,   rev:false, isPP:true },
     { label:'NMV share LT',    get:(s,ym)=>(getNmv(s,ym,'lt').share_ts||0)*100,   fmt:fmtPct, clip:fmtPct,   rev:false, isPP:true },
@@ -3548,6 +3559,14 @@ function renderLinkGen(site, gran = 'monthly') {
   const mtdMap = {};
   (snap.link_gen_mtd_comp||[]).filter(r=>r.sit_site_id===site).forEach(r=>{ mtdMap[r.period]=+r.generadores_links; });
 
+  // % de generadores con earnings ese mes, por estado del afiliado COMO generador de links
+  // (new/recurrent/recovered segun su propio historial de generacion, no de ventas) + 'total'.
+  const earnByStatus = { total:{}, new:{}, recurrent:{}, recovered:{} };
+  (snap.link_gen_earnings_by_status||[]).filter(r=>r.sit_site_id===site).forEach(r=>{
+    if (earnByStatus[r.segment]) earnByStatus[r.segment][r.mes] = +r.pct_earnings;
+  });
+  const hasEarnByStatus = Object.values(earnByStatus).some(m => Object.keys(m).length > 0);
+
   const activeByMonth = {};
   (snap.behaviour||[]).filter(r=>r.sit_site_id===site&&r.period==='MONTH').forEach(r=>{ activeByMonth[String(r.dt).slice(0,7)]=+r.active_aff; });
 
@@ -3589,12 +3608,30 @@ function renderLinkGen(site, gran = 'monthly') {
       return { gen:gc, momGen:signStr(pctStr(gc,gp)), pct:gcp, prevPct:gpp, isMtd:false };
     });
 
+    // 3 lineas de apertura por estado del generador (new/recurrent/recovered), desde la
+    // query link_gen_earnings_by_status. Solo se agregan si hay datos cargados.
+    const STATUS_LINE_DEFS = [
+      { key:'new',       label:'% earnings · New',       color:'#3483FA' },
+      { key:'recurrent', label:'% earnings · Recurrent',  color:'#7C3AED' },
+      { key:'recovered', label:'% earnings · Recovered',  color:'#F59E0B' },
+    ];
+    const statusDatasets = hasEarnByStatus ? STATUS_LINE_DEFS
+      .map(def => ({
+        label: def.label,
+        data: showM.map(m => earnByStatus[def.key][m] ?? null),
+        type:'line', borderColor:def.color, backgroundColor:'transparent',
+        pointRadius:3, tension:0.3, yAxisID:'y1', spanGaps:true, order:1, borderDash:[4,3],
+      }))
+      .filter(ds => ds.data.some(v => v != null))
+      : [];
+
     mkChart(canvasId, {
       type:'bar',
       data:{ labels, datasets:[
         { label:'Generadores de links', data:genValues, backgroundColor:bgColors, borderRadius:4, maxBarThickness:52, yAxisID:'y', order:2 },
         { label:'% con earnings →', data:pctEarnings, type:'line', borderColor:'#00A650', backgroundColor:'#00A65020',
-          pointRadius:4, pointBackgroundColor:'#00A650', tension:0.3, yAxisID:'y1', spanGaps:true, order:1 }
+          pointRadius:4, pointBackgroundColor:'#00A650', tension:0.3, yAxisID:'y1', spanGaps:true, order:1 },
+        ...statusDatasets,
       ]},
       options:{
         responsive:true, maintainAspectRatio:false,
@@ -3604,13 +3641,17 @@ function renderLinkGen(site, gran = 'monthly') {
             callbacks:{
               title: ctx => labels[ctx[0].dataIndex],
               label: ctx => {
-                const d = tooltipRows[ctx.dataIndex];
-                const lbl = d.isMtd ? 'vs mis. per. mes ant.' : 'MoM';
+                if (ctx.datasetIndex === 0) {
+                  const d = tooltipRows[ctx.dataIndex];
+                  return `Generadores: ${fmtNum(d.gen)}  (${d.isMtd ? 'vs mis. per. mes ant.' : 'MoM'}: ${d.momGen})`;
+                }
                 if (ctx.datasetIndex === 1) {
+                  const d = tooltipRows[ctx.dataIndex];
+                  const lbl = d.isMtd ? 'vs mis. per. mes ant.' : 'MoM';
                   const deltaPct = d.pct != null && d.prevPct != null ? signStr((d.pct - d.prevPct).toFixed(1)+'pp') : 'N/D';
                   return `% con earnings: ${d.pct != null ? d.pct+'%' : '—'}  (${lbl}: ${deltaPct})`;
                 }
-                return `Generadores: ${fmtNum(d.gen)}  (${lbl}: ${d.momGen})`;
+                return ctx.raw == null ? null : `${ctx.dataset.label}: ${ctx.raw}%`;
               }
             }
           }

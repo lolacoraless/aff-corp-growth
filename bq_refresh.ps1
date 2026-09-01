@@ -1009,6 +1009,75 @@ WHERE s.month >= '${D.HIST}'
 GROUP BY 1,2,3 ORDER BY mes,sit_site_id,segment
 '@
 
+# % de generadores de links con earnings ese mismo mes, desagregado por el estado del
+# afiliado COMO GENERADOR DE LINKS (new/recurrent/recovered segun su historial de
+# generacion de links, no de ventas). 'total' = todos los generadores del mes, sin filtrar
+# por estado — reemplaza el calculo aproximado (active_aff total / generadores total) que
+# usaba el chart, por un join real generador<->earner por afiliado-mes.
+$sqlMap["link_gen_earnings_by_status"] = d @'
+WITH link_events AS (
+  SELECT SIT_SITE_ID, DATE_TRUNC(EVENT_DT, MONTH) AS mes, CUS_CUST_ID AS affiliate_id
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`
+  WHERE EVENT_DT >= '${D.HIST}' AND EVENT_DT <= CURRENT_DATE('-4')
+    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))
+      OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'
+      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',
+         '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',
+         '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')
+      OR PATH_NAME='/share/action')
+  GROUP BY 1,2,3
+),
+first_gen AS (
+  SELECT SIT_SITE_ID, affiliate_id, MIN(mes) AS first_month
+  FROM link_events GROUP BY 1,2
+),
+gen_status AS (
+  SELECT c.SIT_SITE_ID, c.mes, c.affiliate_id,
+    CASE WHEN f.first_month = c.mes THEN 'new'
+         WHEN p.affiliate_id IS NOT NULL THEN 'recurrent'
+         ELSE 'recovered' END AS segment
+  FROM link_events c
+  JOIN first_gen f ON c.SIT_SITE_ID = f.SIT_SITE_ID AND c.affiliate_id = f.affiliate_id
+  LEFT JOIN link_events p ON c.SIT_SITE_ID = p.SIT_SITE_ID AND c.affiliate_id = p.affiliate_id
+    AND p.mes = DATE_SUB(c.mes, INTERVAL 1 MONTH)
+),
+earners AS (
+  SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT, MONTH) AS mes, AFFILIATE_ID AS affiliate_id
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
+  WHERE ORD_STATUS = 'paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID
+    AND ORD_CREATED_DT >= '${D.HIST}' AND ORD_CREATED_DT <= CURRENT_DATE('-4')
+    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)
+      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))
+  GROUP BY 1,2,3
+),
+by_status AS (
+  SELECT g.SIT_SITE_ID AS sit_site_id, FORMAT_DATE('%Y-%m', g.mes) AS mes, g.segment,
+    COUNT(DISTINCT g.affiliate_id) AS generadores,
+    COUNT(DISTINCT IF(e.affiliate_id IS NOT NULL, g.affiliate_id, NULL)) AS con_earnings
+  FROM gen_status g
+  LEFT JOIN earners e ON g.SIT_SITE_ID = e.SIT_SITE_ID AND g.affiliate_id = e.affiliate_id AND g.mes = e.mes
+  GROUP BY 1,2,3
+),
+total AS (
+  SELECT g.SIT_SITE_ID AS sit_site_id, FORMAT_DATE('%Y-%m', g.mes) AS mes, 'total' AS segment,
+    COUNT(DISTINCT g.affiliate_id) AS generadores,
+    COUNT(DISTINCT IF(e.affiliate_id IS NOT NULL, g.affiliate_id, NULL)) AS con_earnings
+  FROM gen_status g
+  LEFT JOIN earners e ON g.SIT_SITE_ID = e.SIT_SITE_ID AND g.affiliate_id = e.affiliate_id AND g.mes = e.mes
+  GROUP BY 1,2
+)
+SELECT sit_site_id, mes, segment, generadores, con_earnings,
+  ROUND(SAFE_DIVIDE(con_earnings, generadores) * 100, 1) AS pct_earnings
+FROM by_status
+UNION ALL
+SELECT sit_site_id, mes, segment, generadores, con_earnings,
+  ROUND(SAFE_DIVIDE(con_earnings, generadores) * 100, 1) AS pct_earnings
+FROM total
+ORDER BY mes, sit_site_id, segment
+'@
+
 $sqlMap["mkt_context"] = d @'
 SELECT
   KPI_ID,
@@ -1150,6 +1219,7 @@ $data = [ordered]@{
     link_gen_daily     = (Parse-BQResult $rawResults["link_gen_daily"].json)
     link_gen_mtd_comp  = (Parse-BQResult $rawResults["link_gen_mtd_comp"].json)
     link_gen_by_segment= (Parse-BQResult $rawResults["link_gen_by_segment"].json)
+    link_gen_earnings_by_status = (Parse-BQResult $rawResults["link_gen_earnings_by_status"].json)
     mkt_context        = (Parse-BQResult $rawResults["mkt_context"].json)
 }
 
@@ -1162,6 +1232,7 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
   'nmv_monthly','nmv_lt_by_status','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
   'act1','act2','act_source','act_new_days','churn','churn_comp','churn_mtd',
   'link_gen_monthly','link_gen_daily','link_gen_mtd_comp','link_gen_by_segment',
+  'link_gen_earnings_by_status',
   'mkt_context') | ForEach-Object {
     $snapshotJson = $snapshotJson.Replace("`"$_`":null", "`"$_`":[]")
 }
