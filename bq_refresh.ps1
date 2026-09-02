@@ -905,6 +905,84 @@ SELECT SIT_SITE_ID,
 FROM window_sales GROUP BY 1
 '@
 
+# Distribucion de afiliados por earnings LIFETIME (toda su historia, sin filtro de fecha).
+# Base: registrados en BT_AFFI_AFFILIATE_AFFILIATE, excluyendo KAM (MKT_AFFILIATE_TYPE) y
+# Potential KAM (LK_AFFI_AFFILIATES_KA con END_DT IS NULL) via anti-join -- los KAM son
+# cuentas gestionadas con earnings de otra escala que distorsionarian los buckets LT.
+# LEFT JOIN a earnings para conservar los registrados que nunca facturaron (bucket $0).
+# Los cortes de bucket son distintos por site (moneda local); bucket_idx 0 = $0 siempre.
+# MLB tiene 6 buckets, el resto 5. Los labels se arman en el front (getEarningsBuckets).
+$sqlMap["earnings_buckets"] = d @'
+WITH kam_excl AS (
+  SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_TYPE`
+  UNION DISTINCT
+  SELECT DISTINCT AFFILIATE_ID, SIT_SITE_ID
+  FROM `meli-bi-data.WHOWNER.LK_AFFI_AFFILIATES_KA`
+  WHERE AFFILIATE_SEGMENT = 'Potential KAM' AND END_DT IS NULL
+),
+registered AS (
+  SELECT DISTINCT cus_cust_id AS affiliate_id, sit_site_id
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_AFFILIATE_AFFILIATE`
+  WHERE sit_site_id IN ('MLB','MLM','MLC','MLA')
+),
+lt_registered AS (
+  SELECT r.affiliate_id, r.sit_site_id
+  FROM registered r
+  LEFT JOIN kam_excl e ON r.affiliate_id = e.affiliate_id AND r.sit_site_id = e.sit_site_id
+  WHERE e.affiliate_id IS NULL
+),
+earnings AS (
+  SELECT AFFILIATE_ID, SIT_SITE_ID, SUM(EARNINGS_TOTAL_AMT_LC) AS earnings_lt
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
+  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID
+    AND IS_PAYABLE_FLAG = TRUE
+  GROUP BY 1,2
+),
+base AS (
+  SELECT r.sit_site_id, r.affiliate_id, COALESCE(e.earnings_lt, 0) AS earnings_lt
+  FROM lt_registered r
+  LEFT JOIN earnings e
+    ON r.affiliate_id = e.AFFILIATE_ID AND r.sit_site_id = e.SIT_SITE_ID
+),
+bucketed AS (
+  SELECT sit_site_id,
+    CASE
+      WHEN sit_site_id = 'MLA' THEN CASE
+        WHEN earnings_lt <= 0     THEN 0
+        WHEN earnings_lt < 30000  THEN 1
+        WHEN earnings_lt < 50000  THEN 2
+        WHEN earnings_lt < 100000 THEN 3
+        ELSE 4 END
+      WHEN sit_site_id = 'MLM' THEN CASE
+        WHEN earnings_lt <= 0   THEN 0
+        WHEN earnings_lt < 100  THEN 1
+        WHEN earnings_lt < 300  THEN 2
+        WHEN earnings_lt < 600  THEN 3
+        ELSE 4 END
+      WHEN sit_site_id = 'MLC' THEN CASE
+        WHEN earnings_lt <= 0     THEN 0
+        WHEN earnings_lt < 20000  THEN 1
+        WHEN earnings_lt < 50000  THEN 2
+        WHEN earnings_lt < 100000 THEN 3
+        ELSE 4 END
+      WHEN sit_site_id = 'MLB' THEN CASE
+        WHEN earnings_lt <= 0  THEN 0
+        WHEN earnings_lt < 30  THEN 1
+        WHEN earnings_lt < 100 THEN 2
+        WHEN earnings_lt < 200 THEN 3
+        WHEN earnings_lt < 500 THEN 4
+        ELSE 5 END
+    END AS bucket_idx
+  FROM base
+)
+SELECT sit_site_id, bucket_idx, COUNT(*) AS users
+FROM bucketed
+GROUP BY 1,2
+ORDER BY 1,2
+'@
+
 $LINK_PATHS = "((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'`$.select_value') IN ('copy_link','copy_id')) OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link' OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link','/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code','/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion') OR PATH_NAME='/share/action')"
 
 $sqlMap["link_gen_monthly"] = d @'
@@ -1223,6 +1301,7 @@ $data = [ordered]@{
     churn              = (Parse-BQResult $rawResults["churn"].json)
     churn_comp         = (Parse-BQResult $rawResults["churn_comp"].json)
     churn_mtd          = (Parse-BQResult $rawResults["churn_mtd"].json)
+    earnings_buckets   = (Parse-BQResult $rawResults["earnings_buckets"].json)
     link_gen_monthly   = (Parse-BQResult $rawResults["link_gen_monthly"].json)
     link_gen_daily     = (Parse-BQResult $rawResults["link_gen_daily"].json)
     link_gen_mtd_comp  = (Parse-BQResult $rawResults["link_gen_mtd_comp"].json)
@@ -1238,7 +1317,7 @@ $snapshotJson = $snapshot | ConvertTo-Json -Depth 20 -Compress
 @('behaviour','beh_mtd','beh_pacing','qr_rolling','registrations','reg_mtd',
   'reg_pacing','landing_traffic','landing_pacing','spend_pom',
   'nmv_monthly','nmv_lt_by_status','nmv_weekly','nmv_mtd','nmv_pacing','data_freshness',
-  'act1','act2','act_source','act_new_days','churn','churn_comp','churn_mtd',
+  'act1','act2','act_source','act_new_days','churn','churn_comp','churn_mtd','earnings_buckets',
   'link_gen_monthly','link_gen_daily','link_gen_mtd_comp','link_gen_by_segment',
   'link_gen_earnings_by_status',
   'mkt_context') | ForEach-Object {
