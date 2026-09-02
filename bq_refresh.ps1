@@ -905,13 +905,16 @@ SELECT SIT_SITE_ID,
 FROM window_sales GROUP BY 1
 '@
 
-# Distribucion de afiliados por earnings LIFETIME (toda su historia, sin filtro de fecha).
-# Base: registrados en BT_AFFI_AFFILIATE_AFFILIATE, excluyendo KAM (MKT_AFFILIATE_TYPE) y
-# Potential KAM (LK_AFFI_AFFILIATES_KA con END_DT IS NULL) via anti-join -- los KAM son
-# cuentas gestionadas con earnings de otra escala que distorsionarian los buckets LT.
-# LEFT JOIN a earnings para conservar los registrados que nunca facturaron (bucket $0).
-# Los cortes de bucket son distintos por site (moneda local); bucket_idx 0 = $0 siempre.
-# MLB tiene 6 buckets, el resto 5. Los labels se arman en el front (getEarningsBuckets).
+# Churners de cada mes, abiertos por los earnings que ACUMULARON en toda su historia
+# hasta el momento de churnear. Responde: de los que se fueron en agosto, cuantos nunca
+# llegaron a generar earnings, cuantos generaron poco, cuantos eran valiosos.
+# - Churner: activo en el mes M y sin actividad en M+1 -> se imputa a churn_month = M+1
+#   (mismo criterio que churn_comp, para que los totales cierren entre ambos graficos).
+# - Earnings: suma de EARNINGS_TOTAL_AMT_LC payable de TODOS los meses <= su ultimo mes
+#   activo (no solo el ultimo mes), sin piso de fecha.
+# - Excluye KAM y Potential KAM (anti-join): son cuentas gestionadas de otra escala.
+# - bucket_idx 0 = nunca genero earnings. Cortes por site en moneda local; MLB tiene 6
+#   buckets y el resto 5. Los labels se arman en el front (EARNINGS_BUCKET_LABELS).
 $sqlMap["earnings_buckets"] = d @'
 WITH kam_excl AS (
   SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id
@@ -921,53 +924,70 @@ WITH kam_excl AS (
   FROM `meli-bi-data.WHOWNER.LK_AFFI_AFFILIATES_KA`
   WHERE AFFILIATE_SEGMENT = 'Potential KAM' AND END_DT IS NULL
 ),
-registered AS (
-  SELECT DISTINCT cus_cust_id AS affiliate_id, sit_site_id
-  FROM `meli-bi-data.WHOWNER.BT_AFFI_AFFILIATE_AFFILIATE`
-  WHERE sit_site_id IN ('MLB','MLM','MLC','MLA')
-),
-lt_registered AS (
-  SELECT r.affiliate_id, r.sit_site_id
-  FROM registered r
-  LEFT JOIN kam_excl e ON r.affiliate_id = e.affiliate_id AND r.sit_site_id = e.sit_site_id
+monthly_active AS (
+  SELECT s.SIT_SITE_ID, DATE_TRUNC(s.ORD_CREATED_DT, MONTH) AS month, s.AFFILIATE_ID
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s
+  LEFT JOIN kam_excl e ON s.AFFILIATE_ID = e.affiliate_id AND s.SIT_SITE_ID = e.sit_site_id
   WHERE e.affiliate_id IS NULL
+    AND s.ORD_STATUS = 'paid' AND s.SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
+    AND s.SIT_SITE_ID = s.AFFILIATE_SIT_SITE_ID
+    AND s.ORD_CREATED_DT >= '${D.DEEP}'
+    AND s.ORD_CREATED_DT < DATE_TRUNC(CURRENT_DATE(), MONTH)
+    AND ((s.ORD_CREATED_DT >= '${D.ENIGMA}' AND s.NMV_ENIGMA_TOTAL_AMT_LC > 0)
+      OR (s.ORD_CREATED_DT < '${D.ENIGMA}' AND s.NMV_TD7DCALIB_TOTAL_AMT_LC > 0))
+  GROUP BY 1,2,3
 ),
-earnings AS (
-  SELECT AFFILIATE_ID, SIT_SITE_ID, SUM(EARNINGS_TOTAL_AMT_LC) AS earnings_lt
+churners AS (
+  SELECT prev.SIT_SITE_ID, prev.AFFILIATE_ID,
+    prev.month AS last_active_month,
+    DATE_ADD(prev.month, INTERVAL 1 MONTH) AS churn_month
+  FROM monthly_active prev
+  LEFT JOIN monthly_active curr
+    ON prev.AFFILIATE_ID = curr.AFFILIATE_ID AND prev.SIT_SITE_ID = curr.SIT_SITE_ID
+    AND curr.month = DATE_ADD(prev.month, INTERVAL 1 MONTH)
+  WHERE curr.AFFILIATE_ID IS NULL
+    AND DATE_ADD(prev.month, INTERVAL 1 MONTH) >= '${D.HIST}'
+    AND DATE_ADD(prev.month, INTERVAL 1 MONTH) < DATE_TRUNC(CURRENT_DATE(), MONTH)
+),
+monthly_earnings AS (
+  SELECT SIT_SITE_ID, AFFILIATE_ID, DATE_TRUNC(ORD_CREATED_DT, MONTH) AS month,
+    SUM(EARNINGS_TOTAL_AMT_LC) AS earnings
   FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
   WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')
     AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID
     AND IS_PAYABLE_FLAG = TRUE
-  GROUP BY 1,2
+  GROUP BY 1,2,3
 ),
-base AS (
-  SELECT r.sit_site_id, r.affiliate_id, COALESCE(e.earnings_lt, 0) AS earnings_lt
-  FROM lt_registered r
-  LEFT JOIN earnings e
-    ON r.affiliate_id = e.AFFILIATE_ID AND r.sit_site_id = e.SIT_SITE_ID
+churner_earnings AS (
+  SELECT c.SIT_SITE_ID, c.churn_month, c.AFFILIATE_ID,
+    COALESCE(SUM(IF(me.month <= c.last_active_month, me.earnings, 0)), 0) AS earnings_lt
+  FROM churners c
+  LEFT JOIN monthly_earnings me
+    ON me.SIT_SITE_ID = c.SIT_SITE_ID AND me.AFFILIATE_ID = c.AFFILIATE_ID
+  GROUP BY 1,2,3
 ),
 bucketed AS (
-  SELECT sit_site_id,
+  SELECT SIT_SITE_ID, churn_month,
     CASE
-      WHEN sit_site_id = 'MLA' THEN CASE
+      WHEN SIT_SITE_ID = 'MLA' THEN CASE
         WHEN earnings_lt <= 0     THEN 0
         WHEN earnings_lt < 30000  THEN 1
         WHEN earnings_lt < 50000  THEN 2
         WHEN earnings_lt < 100000 THEN 3
         ELSE 4 END
-      WHEN sit_site_id = 'MLM' THEN CASE
+      WHEN SIT_SITE_ID = 'MLM' THEN CASE
         WHEN earnings_lt <= 0   THEN 0
         WHEN earnings_lt < 100  THEN 1
         WHEN earnings_lt < 300  THEN 2
         WHEN earnings_lt < 600  THEN 3
         ELSE 4 END
-      WHEN sit_site_id = 'MLC' THEN CASE
+      WHEN SIT_SITE_ID = 'MLC' THEN CASE
         WHEN earnings_lt <= 0     THEN 0
         WHEN earnings_lt < 20000  THEN 1
         WHEN earnings_lt < 50000  THEN 2
         WHEN earnings_lt < 100000 THEN 3
         ELSE 4 END
-      WHEN sit_site_id = 'MLB' THEN CASE
+      WHEN SIT_SITE_ID = 'MLB' THEN CASE
         WHEN earnings_lt <= 0  THEN 0
         WHEN earnings_lt < 30  THEN 1
         WHEN earnings_lt < 100 THEN 2
@@ -975,12 +995,14 @@ bucketed AS (
         WHEN earnings_lt < 500 THEN 4
         ELSE 5 END
     END AS bucket_idx
-  FROM base
+  FROM churner_earnings
 )
-SELECT sit_site_id, bucket_idx, COUNT(*) AS users
+SELECT SIT_SITE_ID AS sit_site_id,
+  FORMAT_DATE('%Y-%m', churn_month) AS mes,
+  bucket_idx, COUNT(*) AS users
 FROM bucketed
-GROUP BY 1,2
-ORDER BY 1,2
+GROUP BY 1,2,3
+ORDER BY 1,2,3
 '@
 
 $LINK_PATHS = "((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'`$.select_value') IN ('copy_link','copy_id')) OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link' OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link','/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code','/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion') OR PATH_NAME='/share/action')"
