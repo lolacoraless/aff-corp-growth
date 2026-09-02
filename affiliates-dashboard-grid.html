@@ -5527,8 +5527,13 @@ function trimDataToWindow(n) {
 function addCurrentMonthPoints() {
   const now = new Date();
   const currMonShort = MON_NAMES_ES[now.getMonth()] + ' ' + String(now.getFullYear()).slice(2);
-  const mensF = v => (v != null && DAYS_ELAPS > 0) ? Math.round(v * DAYS_MAY / DAYS_ELAPS) : null;
-  const mensF2 = v => (v != null && DAYS_ELAPS > 0) ? +(v * DAYS_MAY / DAYS_ELAPS).toFixed(2) : null;
+  // Con 1-2 dias transcurridos, proyectar a mes completo multiplica por ~15-30x: el numero
+  // sale enorme y se ve como si el mes ya hubiera cerrado. Mismo umbral que el warning banner
+  // de "primeros dias del mes" (early-month-warning): por debajo de eso, no proyectar — dejar
+  // null en vez de un estimado no confiable.
+  const MIN_DAYS_FOR_PROJECTION = 2;
+  const mensF  = v => (v != null && DAYS_ELAPS > MIN_DAYS_FOR_PROJECTION) ? Math.round(v * DAYS_MAY / DAYS_ELAPS) : null;
+  const mensF2 = v => (v != null && DAYS_ELAPS > MIN_DAYS_FOR_PROJECTION) ? +(v * DAYS_MAY / DAYS_ELAPS).toFixed(2) : null;
 
   ['MLB','MLM','MLC','MLA'].forEach(site => {
     if (DATA[site].months.at(-1) === currMonShort) return; // already present
