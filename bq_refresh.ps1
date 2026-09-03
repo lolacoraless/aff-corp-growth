@@ -1357,6 +1357,28 @@ $totalSec = [Math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
 Write-Host ""
 Write-Host "All queries done in ${totalSec}s" -ForegroundColor Cyan
 Write-Host ""
+
+# ==== GUARD: no pisar el snapshot bueno con una corrida fallida ==============
+# Si el token de gcloud vence a mitad de la corrida, TODAS las queries devuelven '[]' y
+# sin este guard el script igual escribia el HTML, dejando el dashboard en blanco y
+# perdiendo los ultimos datos buenos. Ante una falla masiva conviene abortar y conservar
+# el snapshot anterior: un dashboard con datos de ayer es mucho mejor que uno vacio.
+$failed    = @($rawResults.Values | Where-Object { -not $_.ok })
+$failRatio = if ($rawResults.Count -gt 0) { $failed.Count / $rawResults.Count } else { 1 }
+if ($failRatio -ge 0.5) {
+    Write-Host "ABORTADO: fallaron $($failed.Count) de $($rawResults.Count) queries." -ForegroundColor Red
+    Write-Host "El snapshot anterior NO se toco — el dashboard sigue con los ultimos datos buenos." -ForegroundColor Yellow
+    if ($failed.error -match 'Reauthentication failed|auth tokens|gcloud auth login') {
+        Write-Host ""
+        Write-Host "Causa: el token de gcloud vencio. Reautenticate y volve a correr:" -ForegroundColor Yellow
+        Write-Host "  gcloud auth login" -ForegroundColor White
+    }
+    exit 1
+}
+if ($failed.Count -gt 0) {
+    Write-Host "AVISO: $($failed.Count) de $($rawResults.Count) queries fallaron; esas secciones quedan vacias." -ForegroundColor Yellow
+    Write-Host ""
+}
 Write-Host "=== Slowest queries ===" -ForegroundColor Yellow
 $rawResults.Values | Sort-Object { if ($null -ne $_.duration) { $_.duration } else { 0 } } -Descending | Select-Object -First 10 | ForEach-Object {
     $s = if ($_.ok) { "OK  " } else { "FAIL" }
