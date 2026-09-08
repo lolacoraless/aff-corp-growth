@@ -1,0 +1,2448 @@
+{
+  "name": "Affiliates dashboard corp — refresh diario",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 6,
+              "triggerAtMinute": 12
+            }
+          ]
+        }
+      },
+      "id": "n-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -420,
+        0
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Mismas fechas que bq_refresh.ps1 (hora local del worker de Verdi).\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;\nconst Y = now.getFullYear(), M = now.getMonth(), DD = now.getDate();\n\nconst prevLast = new Date(Y, M, 0).getDate();          // ultimo dia del mes anterior\nconst pdDay    = Math.max(1, Math.min(DD - 1, prevLast));\nconst dow      = now.getDay();                          // 0 = domingo, igual que PowerShell\nconst dtm      = dow === 0 ? 6 : dow - 1;\n\nconst D = {\n  HIST: '2025-01-01', DEEP: '2024-01-01', ENIGMA: '2026-04-01',\n  YEST:  fmt(new Date(Y, M, DD - 1)),\n  CUR:   fmt(new Date(Y, M, 1)),\n  PREV:  fmt(new Date(Y, M - 1, 1)),\n  M2:    fmt(new Date(Y, M - 2, 1)),\n  M3:    fmt(new Date(Y, M - 3, 1)),\n  M4:    fmt(new Date(Y, M - 4, 1)),\n  M5:    fmt(new Date(Y, M - 5, 1)),\n  M6:    fmt(new Date(Y, M - 6, 1)),\n  M7:    fmt(new Date(Y, M - 7, 1)),\n  PREV_DAY: fmt(new Date(Y, M - 1, pdDay)),\n  DAY_OF_MONTH: String(DD - 1),\n  W8:    fmt(new Date(Y, M, DD - dtm - 84)),\n};\n\nconst TEMPLATES = {\n  \"behaviour\": \"SELECT sit_site_id, dt, period, active_aff,\\n  retained_aff AS recurrent, recovered_aff AS recovered,\\n  new_aff, churned_aff AS inactive,\\n  SAFE_DIVIDE(new_aff + recovered_aff, churned_aff) AS quick_ratio\\nFROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_BEHAVIOUR`\\nWHERE period IN ('MONTH','WEEK')\\n  AND sit_site_id IN ('MLB','MLM','MLC','MLA')\\n  AND dt >= '${D.HIST}'\\nORDER BY sit_site_id, period, dt\",\n  \"beh_mtd\": \"WITH all_sales AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID, DATE_TRUNC(ORD_CREATED_DT, MONTH) AS sale_month\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS = 'paid' AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND ORD_CREATED_DT >= '${D.DEEP}'\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n  GROUP BY 1,2,3\\n),\\nfirst_sale AS (SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(sale_month) AS first_month FROM all_sales GROUP BY 1,2),\\ncurr_7d AS (\\n  SELECT DISTINCT SIT_SITE_ID, AFFILIATE_ID\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_CREATED_DT BETWEEN '${D.CUR}' AND '${D.YEST}'\\n    AND ORD_STATUS = 'paid' AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND NMV_ENIGMA_TOTAL_AMT_LC > 0\\n),\\nprev_7d AS (\\n  SELECT DISTINCT SIT_SITE_ID, AFFILIATE_ID\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_CREATED_DT BETWEEN '${D.PREV}' AND '${D.PREV_DAY}'\\n    AND ORD_STATUS = 'paid' AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND NMV_ENIGMA_TOTAL_AMT_LC > 0\\n),\\napr_full AS (SELECT DISTINCT SIT_SITE_ID, AFFILIATE_ID FROM all_sales WHERE sale_month = '${D.PREV}'),\\nmar_full AS (SELECT DISTINCT SIT_SITE_ID, AFFILIATE_ID FROM all_sales WHERE sale_month = '${D.M2}'),\\ncurr_flow AS (\\n  SELECT c.SIT_SITE_ID,\\n    COUNT(DISTINCT c.AFFILIATE_ID) AS active_aff,\\n    COUNT(DISTINCT IF(f.first_month = '${D.CUR}', c.AFFILIATE_ID, NULL)) AS new_aff,\\n    COUNT(DISTINCT IF(f.first_month < '${D.CUR}' AND a.AFFILIATE_ID IS NULL, c.AFFILIATE_ID, NULL)) AS recovered_aff\\n  FROM curr_7d c LEFT JOIN first_sale f USING (SIT_SITE_ID, AFFILIATE_ID)\\n  LEFT JOIN apr_full a USING (SIT_SITE_ID, AFFILIATE_ID) GROUP BY 1\\n),\\ncurr_churn AS (\\n  SELECT a.SIT_SITE_ID, COUNT(DISTINCT IF(c.AFFILIATE_ID IS NULL, a.AFFILIATE_ID, NULL)) AS churned_aff\\n  FROM apr_full a LEFT JOIN curr_7d c USING (SIT_SITE_ID, AFFILIATE_ID) GROUP BY 1\\n),\\nprev_flow AS (\\n  SELECT p.SIT_SITE_ID,\\n    COUNT(DISTINCT p.AFFILIATE_ID) AS active_aff,\\n    COUNT(DISTINCT IF(f.first_month = '${D.PREV}', p.AFFILIATE_ID, NULL)) AS new_aff,\\n    COUNT(DISTINCT IF(f.first_month < '${D.PREV}' AND m.AFFILIATE_ID IS NULL, p.AFFILIATE_ID, NULL)) AS recovered_aff\\n  FROM prev_7d p LEFT JOIN first_sale f USING (SIT_SITE_ID, AFFILIATE_ID)\\n  LEFT JOIN mar_full m USING (SIT_SITE_ID, AFFILIATE_ID) GROUP BY 1\\n),\\nprev_churn AS (\\n  SELECT m.SIT_SITE_ID, COUNT(DISTINCT IF(p.AFFILIATE_ID IS NULL, m.AFFILIATE_ID, NULL)) AS churned_aff\\n  FROM mar_full m LEFT JOIN prev_7d p USING (SIT_SITE_ID, AFFILIATE_ID) GROUP BY 1\\n)\\nSELECT cf.SIT_SITE_ID, 'curr' AS period, cf.active_aff, cf.new_aff, cf.recovered_aff, cc.churned_aff\\nFROM curr_flow cf JOIN curr_churn cc USING (SIT_SITE_ID)\\nUNION ALL\\nSELECT pf.SIT_SITE_ID, 'prev' AS period, pf.active_aff, pf.new_aff, pf.recovered_aff, pc.churned_aff\\nFROM prev_flow pf JOIN prev_churn pc USING (SIT_SITE_ID)\",\n  \"beh_pacing\": \"-- Para M-2 a M-6: cuántos afiliados activos/new/rec/ret/chu había al día D de ese mes\\n-- (mismo día del mes que ayer) — usado para calcular pacing histórico de proyecciones\\nWITH all_sales AS (\\n  SELECT DISTINCT SIT_SITE_ID, AFFILIATE_ID,\\n    DATE(ORD_CREATED_DT) AS sale_date,\\n    DATE_TRUNC(ORD_CREATED_DT, MONTH) AS sale_month\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS = 'paid'\\n    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND ORD_CREATED_DT >= '${D.M7}'\\n    AND ORD_CREATED_DT < '${D.CUR}'\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n),\\nfirst_ever AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID,\\n    DATE_TRUNC(MIN(ORD_CREATED_DT), MONTH) AS first_month\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS = 'paid'\\n    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND ORD_CREATED_DT >= '${D.DEEP}'\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n  GROUP BY 1,2\\n),\\nmonthly_full AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID, sale_month\\n  FROM all_sales GROUP BY 1,2,3\\n),\\ntarget_months AS (\\n  SELECT DATE('${D.M2}') AS m UNION ALL\\n  SELECT DATE('${D.M3}') UNION ALL\\n  SELECT DATE('${D.M4}') UNION ALL\\n  SELECT DATE('${D.M5}') UNION ALL\\n  SELECT DATE('${D.M6}')\\n),\\n-- Afiliados activos de día 1 al día D de cada mes objetivo\\nat_day AS (\\n  SELECT s.SIT_SITE_ID, t.m AS month_start, s.AFFILIATE_ID\\n  FROM all_sales s\\n  JOIN target_months t ON s.sale_month = t.m\\n  WHERE EXTRACT(DAY FROM s.sale_date) <= ${D.DAY_OF_MONTH}\\n  GROUP BY 1,2,3\\n),\\n-- Afiliados del mes anterior (para clasificación new/rec/ret/chu)\\nprev_full AS (\\n  SELECT mf.SIT_SITE_ID, DATE_ADD(mf.sale_month, INTERVAL 1 MONTH) AS target_month, mf.AFFILIATE_ID\\n  FROM monthly_full mf\\n  WHERE mf.sale_month IN (\\n    DATE_SUB(DATE('${D.M2}'), INTERVAL 1 MONTH),\\n    DATE_SUB(DATE('${D.M3}'), INTERVAL 1 MONTH),\\n    DATE_SUB(DATE('${D.M4}'), INTERVAL 1 MONTH),\\n    DATE_SUB(DATE('${D.M5}'), INTERVAL 1 MONTH),\\n    DATE_SUB(DATE('${D.M6}'), INTERVAL 1 MONTH)\\n  )\\n),\\n-- Churned al día D: en mes anterior completo pero NO en at_day\\nchurned AS (\\n  SELECT pf.SIT_SITE_ID, pf.target_month AS month_start, pf.AFFILIATE_ID\\n  FROM prev_full pf\\n  LEFT JOIN at_day a ON a.SIT_SITE_ID = pf.SIT_SITE_ID\\n    AND a.month_start = pf.target_month AND a.AFFILIATE_ID = pf.AFFILIATE_ID\\n  WHERE a.AFFILIATE_ID IS NULL\\n),\\nactive_counts AS (\\n  SELECT a.SIT_SITE_ID AS site, a.month_start,\\n    COUNT(DISTINCT a.AFFILIATE_ID) AS active_at_day,\\n    COUNT(DISTINCT IF(fe.first_month = a.month_start, a.AFFILIATE_ID, NULL)) AS new_at_day,\\n    COUNT(DISTINCT IF(fe.first_month < a.month_start AND pf.AFFILIATE_ID IS NULL, a.AFFILIATE_ID, NULL)) AS recovered_at_day,\\n    COUNT(DISTINCT IF(fe.first_month < a.month_start AND pf.AFFILIATE_ID IS NOT NULL, a.AFFILIATE_ID, NULL)) AS recurrent_at_day\\n  FROM at_day a\\n  LEFT JOIN first_ever fe USING (SIT_SITE_ID, AFFILIATE_ID)\\n  LEFT JOIN prev_full pf ON pf.SIT_SITE_ID = a.SIT_SITE_ID\\n    AND pf.target_month = a.month_start AND pf.AFFILIATE_ID = a.AFFILIATE_ID\\n  GROUP BY site, month_start\\n),\\nchurn_counts AS (\\n  SELECT SIT_SITE_ID AS site, month_start,\\n    COUNT(DISTINCT AFFILIATE_ID) AS churned_at_day\\n  FROM churned GROUP BY 1,2\\n)\\nSELECT\\n  ac.site, FORMAT_DATE('%Y-%m-%d', ac.month_start) AS month_start,\\n  ac.active_at_day, ac.new_at_day, ac.recovered_at_day, ac.recurrent_at_day,\\n  COALESCE(cc.churned_at_day, 0) AS churned_at_day\\nFROM active_counts ac\\nLEFT JOIN churn_counts cc USING (site, month_start)\\nORDER BY site, month_start\",\n  \"qr_rolling\": \"WITH all_sales AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID, DATE(ORD_CREATED_DT) AS sale_date\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS = 'paid' AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND ORD_CREATED_DT >= DATE_SUB('${D.YEST}', INTERVAL 61 DAY)\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n  GROUP BY 1,2,3\\n),\\nfirst_ever AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(DATE(ORD_CREATED_DT)) AS first_date\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS = 'paid' AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_CREATED_DT >= '${D.DEEP}'\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n  GROUP BY 1,2\\n),\\nwin_curr AS (SELECT DISTINCT SIT_SITE_ID, AFFILIATE_ID FROM all_sales\\n  WHERE sale_date BETWEEN DATE_SUB('${D.YEST}', INTERVAL 29 DAY) AND '${D.YEST}'),\\nwin_prev AS (SELECT DISTINCT SIT_SITE_ID, AFFILIATE_ID FROM all_sales\\n  WHERE sale_date BETWEEN DATE_SUB('${D.YEST}', INTERVAL 59 DAY) AND DATE_SUB('${D.YEST}', INTERVAL 30 DAY)),\\naffiliates AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID FROM win_curr\\n  UNION DISTINCT\\n  SELECT SIT_SITE_ID, AFFILIATE_ID FROM win_prev\\n)\\nSELECT a.SIT_SITE_ID,\\n  FORMAT_DATE('%Y-%m-%d', DATE_SUB('${D.YEST}', INTERVAL 29 DAY)) AS window_start,\\n  '${D.YEST}' AS window_end,\\n  COUNT(DISTINCT IF(c.AFFILIATE_ID IS NOT NULL AND f.first_date >= DATE_SUB('${D.YEST}', INTERVAL 29 DAY), a.AFFILIATE_ID, NULL)) AS new_30d,\\n  COUNT(DISTINCT IF(c.AFFILIATE_ID IS NOT NULL AND p.AFFILIATE_ID IS NULL AND (f.first_date IS NULL OR f.first_date < DATE_SUB('${D.YEST}', INTERVAL 59 DAY)), a.AFFILIATE_ID, NULL)) AS recovered_30d,\\n  COUNT(DISTINCT IF(p.AFFILIATE_ID IS NOT NULL AND c.AFFILIATE_ID IS NULL, a.AFFILIATE_ID, NULL)) AS churned_30d,\\n  COUNT(DISTINCT c.AFFILIATE_ID) AS active_30d\\nFROM affiliates a\\nLEFT JOIN win_curr c USING (SIT_SITE_ID, AFFILIATE_ID)\\nLEFT JOIN win_prev p USING (SIT_SITE_ID, AFFILIATE_ID)\\nLEFT JOIN first_ever f USING (SIT_SITE_ID, AFFILIATE_ID)\\nGROUP BY 1,2,3\",\n  \"registrations\": \"SELECT ds, site_id, origen, origen_grouped,\\n  COUNT(*) AS users,\\n  EXTRACT(YEAR    FROM DATE(ds)) AS year,\\n  EXTRACT(QUARTER FROM DATE(ds)) AS quarter,\\n  EXTRACT(MONTH   FROM DATE(ds)) AS month,\\n  EXTRACT(ISOWEEK FROM DATE(ds)) AS isoweek\\nFROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`\\nWHERE DATE(ds) >= '${D.HIST}' AND site_id IN ('MLB','MLM','MLC','MLA')\\nGROUP BY ALL ORDER BY 1,2,3\",\n  \"reg_mtd\": \"-- D-1 calculado en BQ (UTC-3), independiente del horario de ejecucion del script\\n-- Periodos simetricos: curr = inicio mes → D-1 | prev = mismo rango, mes anterior\\nSELECT site_id, origen, origen_grouped, COUNT(*) AS users, 'curr' AS period\\nFROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`\\nWHERE DATE(ds) BETWEEN DATE_TRUNC(CURRENT_DATE('-3'), MONTH)\\n                   AND DATE_SUB(CURRENT_DATE('-3'), INTERVAL 1 DAY)\\n  AND site_id IN ('MLB','MLM','MLC','MLA')\\nGROUP BY ALL\\nUNION ALL\\nSELECT site_id, origen, origen_grouped, COUNT(*) AS users, 'prev' AS period\\nFROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`\\nWHERE DATE(ds) BETWEEN DATE_TRUNC(DATE_SUB(CURRENT_DATE('-3'), INTERVAL 1 MONTH), MONTH)\\n                   AND DATE_SUB(DATE_SUB(CURRENT_DATE('-3'), INTERVAL 1 DAY), INTERVAL 1 MONTH)\\n  AND site_id IN ('MLB','MLM','MLC','MLA')\\nGROUP BY ALL\",\n  \"reg_pacing\": \"-- Para M-1 a M-6: registros acumulados al día D del mes vs cierre total\\n-- Pacing ratio = reg_at_day / reg_full → base para proyección 6 meses\\nSELECT\\n  site_id AS site,\\n  FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(DATE(ds), MONTH)) AS month_start,\\n  origen_grouped,\\n  COUNTIF(EXTRACT(DAY FROM DATE(ds)) <= ${D.DAY_OF_MONTH}) AS reg_at_day,\\n  COUNT(*) AS reg_full\\nFROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`\\nWHERE DATE(ds) >= '${D.M6}'\\n  AND DATE(ds) < '${D.CUR}'\\n  AND site_id IN ('MLB','MLM','MLC','MLA')\\nGROUP BY site, month_start, origen_grouped\\nORDER BY site, month_start, origen_grouped\",\n  \"landing_traffic\": \"SELECT\\n  site,\\n  ds,\\n  CASE\\n    WHEN site = 'MLC' AND ds <= '2026-09-08'\\n     AND JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'search_mp'        THEN 'Direct-SugestsMP'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'quickaccess'      THEN 'Direct-QuickAccess'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'appmenu'          THEN 'Direct-Appmenu'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'share_vpp_banner' THEN 'Direct-VppShare'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'home_discovery'   THEN 'Direct-HomeDiscovery'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'search_mp'        THEN 'Direct-SearchMP'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'appmenu_mp'       THEN 'Direct-AppmenuMP'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'sugestions_mp'    THEN 'Direct-SugestsMP'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"_FB\\\")                              THEN 'POM-Facebook'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"_TIKTOK_\\\")                         THEN 'POM-TikTok'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"PUSH\\\")                             THEN 'E&G-Push'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"MAIL\\\")                             THEN 'E&G-Mail'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"_G_\\\")                              THEN 'POM-Google'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"AFF-AFF\\\")                          THEN 'E&G'\\n    ELSE 'Direct'\\n  END AS origen,\\n  COUNT(*) AS visitas,\\n  COUNT(DISTINCT uid) AS qty_users,\\n  COUNT(user_id) AS qty_users_loggedin\\nFROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_REGISTRATION_JOURNEY` b\\nWHERE page = 'landing'\\n  AND ds >= '${D.HIST}'\\n  AND (\\n    ds < '2026-04-01'\\n    OR path = '/splinter/landing'\\n    OR (path = '/sbc/site-merch/landing' AND ds >= '2026-08-01')\\n  )\\nGROUP BY ALL\",\n  \"landing_pacing\": \"-- Para M-1 a M-6: visitas a landing acumuladas al día D del mes vs cierre total\\n-- Pacing ratio = visitas_at_day / visitas_full → base para proyección 6 meses\\nSELECT\\n  site,\\n  FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(DATE(ds), MONTH)) AS month_start,\\n  CASE\\n    WHEN site = 'MLC' AND ds <= '2026-09-08'\\n     AND JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'search_mp'        THEN 'Direct-SugestsMP'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'quickaccess'      THEN 'Direct-QuickAccess'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'appmenu'          THEN 'Direct-Appmenu'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'share_vpp_banner' THEN 'Direct-VppShare'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'home_discovery'   THEN 'Direct-HomeDiscovery'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'search_mp'        THEN 'Direct-SearchMP'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'appmenu_mp'       THEN 'Direct-AppmenuMP'\\n    WHEN JSON_EXTRACT_SCALAR(fragment, '$.origin') = 'sugestions_mp'    THEN 'Direct-SugestsMP'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"_FB\\\")                              THEN 'POM-Facebook'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"_TIKTOK_\\\")                         THEN 'POM-TikTok'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"PUSH\\\")                             THEN 'E&G-Push'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"MAIL\\\")                             THEN 'E&G-Mail'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"_G_\\\")                              THEN 'POM-Google'\\n    WHEN REGEXP_CONTAINS(campaign, r\\\"AFF-AFF\\\")                          THEN 'E&G'\\n    ELSE 'Direct'\\n  END AS origen,\\n  COUNTIF(EXTRACT(DAY FROM DATE(ds)) <= ${D.DAY_OF_MONTH}) AS visitas_at_day,\\n  COUNT(*) AS visitas_full\\nFROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_REGISTRATION_JOURNEY`\\nWHERE page = 'landing'\\n  AND ds >= '${D.M6}'\\n  AND ds < '${D.CUR}'\\n  AND (\\n    ds < '2026-04-01'\\n    OR path = '/splinter/landing'\\n    OR (path = '/sbc/site-merch/landing' AND ds >= '2026-08-01')\\n  )\\nGROUP BY site, month_start, origen\\nORDER BY site, month_start, origen\",\n  \"spend_pom\": \"WITH raw AS (\\n  SELECT\\n    CASE WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLB_') THEN 'MLB'\\n         WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLM_') THEN 'MLM'\\n         WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLA_') THEN 'MLA'\\n         WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLC_') THEN 'MLC' END AS site_id,\\n    DATE_TRUNC(tim_day, MONTH) AS month_id, tim_day, COST_LC\\n  FROM `meli-bi-data.SBOX_MARKETING.BT_COST_GOOGLE_DAILY`\\n  WHERE account_id IN (5569824421,8633263195,2507743500,2902742417)\\n    AND tim_day >= '${D.HIST}'\\n  UNION ALL\\n  SELECT\\n    CASE WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLB_') THEN 'MLB'\\n         WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLM_') THEN 'MLM'\\n         WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLA_') THEN 'MLA'\\n         WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLC_') THEN 'MLC' END AS site_id,\\n    DATE_TRUNC(TIM_DAY, MONTH) AS month_id, TIM_DAY AS tim_day, COST_LC\\n  FROM `meli-bi-data.SBOX_MARKETING.BT_COST_FACEBOOK_DAILY`\\n  WHERE account_id IN (993018982140477,389685073604722,720409463494481,978457163701915,1049740082792804)\\n    AND TIM_DAY >= '${D.HIST}'\\n  UNION ALL\\n  SELECT\\n    CASE WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLB_') THEN 'MLB'\\n         WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLM_') THEN 'MLM'\\n         WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLA_') THEN 'MLA'\\n         WHEN REGEXP_CONTAINS(CAMPAIGN_NAME,'MLC_') THEN 'MLC' END AS site_id,\\n    DATE_TRUNC(EVENT_DATE, MONTH) AS month_id, EVENT_DATE AS tim_day, SPEND_LC AS COST_LC\\n  FROM `meli-bi-data.SBOX_MARKETING.BT_COST_TIKTOK_DAILY`\\n  WHERE advertiser_id IN (7296191154461114370,7356731484117663745,7520663504987226129)\\n    AND EVENT_DATE >= '${D.HIST}'\\n),\\nbase AS (\\n  SELECT site_id, month_id,\\n    IF(month_id = '${D.CUR}', 'mtd', 'hist') AS period,\\n    ROUND(SUM(COST_LC),2) AS cost_lc\\n  FROM raw WHERE site_id IN ('MLB','MLM','MLC','MLA')\\n  GROUP BY 1,2,3\\n)\\nSELECT * FROM base\\nUNION ALL\\nSELECT site_id, month_id, 'prev_mtd' AS period, ROUND(SUM(COST_LC),2) AS cost_lc\\nFROM raw\\nWHERE site_id IN ('MLB','MLM','MLC','MLA')\\n  AND month_id = '${D.PREV}' AND tim_day <= '${D.PREV_DAY}'\\nGROUP BY 1,2\\nORDER BY site_id, month_id, period\",\n  \"nmv_monthly\": \"WITH ts AS (\\n  SELECT DATE_TRUNC(DT,MONTH) AS mes, SIT_SITE_ID,\\n    SUM(NMV_AFF) AS nmv_aff_total, SUM(NMV_TS) AS nmv_ts\\n  FROM `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`\\n  WHERE DT >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') GROUP BY 1,2\\n),\\nbeh AS (\\n  SELECT dt AS mes, sit_site_id, active_aff\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_BEHAVIOUR`\\n  WHERE period = 'MONTH' AND sit_site_id IN ('MLB','MLM','MLC','MLA') AND dt >= '${D.HIST}'\\n),\\nseg_nmv AS (\\n  SELECT DATE_TRUNC(CAST(DT AS DATE),MONTH) AS mes, SIT_SITE_ID,\\n    CASE WHEN SUB_DEFINITION = 'LT' THEN 'lt' ELSE 'nlt' END AS seg,\\n    SUM(NMV_AFF) AS nmv_aff,\\n    COUNT(DISTINCT IF(CUS_CUST_ID_AFF > 0, CUS_CUST_ID_AFF, NULL)) AS nlt_active\\n  FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`\\n  WHERE CAST(DT AS DATE) >= '${D.HIST}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n  GROUP BY 1,2,3\\n),\\nkam_excl AS (\\n  SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_TYPE`\\n  UNION DISTINCT\\n  SELECT DISTINCT cus_cust_id_aff, sit_site_id\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_KA_CATEGORIES`\\n  WHERE segment = 'Potential KAM'\\n),\\nlt_active AS (\\n  SELECT DATE_TRUNC(s.ORD_CREATED_DT, MONTH) AS mes, s.SIT_SITE_ID,\\n    COUNT(DISTINCT s.AFFILIATE_ID) AS active_lt\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s\\n  LEFT JOIN kam_excl e ON s.AFFILIATE_ID = e.affiliate_id AND s.SIT_SITE_ID = e.sit_site_id\\n  WHERE e.affiliate_id IS NULL\\n    AND s.AFFILIATE_ID IS NOT NULL AND s.AFFILIATE_ID != 0\\n    AND s.ORD_CREATED_DT >= '${D.HIST}'\\n    AND s.SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n  GROUP BY 1,2\\n)\\nSELECT s.mes, s.SIT_SITE_ID, s.seg, s.nmv_aff, t.nmv_ts,\\n  SAFE_DIVIDE(s.nmv_aff,t.nmv_ts) AS share_ts,\\n  CASE WHEN s.seg = 'lt' THEN la.active_lt ELSE s.nlt_active END AS active_aff,\\n  CASE WHEN s.seg = 'lt' THEN SAFE_DIVIDE(s.nmv_aff, la.active_lt)\\n       ELSE SAFE_DIVIDE(s.nmv_aff, s.nlt_active) END AS npa\\nFROM seg_nmv s\\nJOIN ts t USING(mes, SIT_SITE_ID)\\nLEFT JOIN lt_active la ON s.mes = la.mes AND s.SIT_SITE_ID = la.SIT_SITE_ID AND s.seg = 'lt'\\nUNION ALL\\nSELECT t.mes, t.SIT_SITE_ID, 'all' AS seg, t.nmv_aff_total AS nmv_aff, t.nmv_ts,\\n  SAFE_DIVIDE(t.nmv_aff_total,t.nmv_ts) AS share_ts,\\n  b.active_aff, SAFE_DIVIDE(t.nmv_aff_total,b.active_aff) AS npa\\nFROM ts t JOIN beh b USING(mes,SIT_SITE_ID)\\nORDER BY mes, SIT_SITE_ID, seg\",\n  \"nmv_lt_by_status\": \"WITH kam_excl AS (\\n  SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_TYPE`\\n  UNION DISTINCT\\n  SELECT DISTINCT cus_cust_id_aff, sit_site_id\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_KA_CATEGORIES`\\n  WHERE segment = 'Potential KAM'\\n),\\nmonthly_sales AS (\\n  SELECT s.SIT_SITE_ID, s.AFFILIATE_ID, DATE_TRUNC(s.ORD_CREATED_DT, MONTH) AS mes,\\n    SUM(CASE WHEN s.ORD_CREATED_DT >= '${D.ENIGMA}' THEN s.NMV_ENIGMA_TOTAL_AMT_LC\\n             ELSE s.NMV_TD7DCALIB_TOTAL_AMT_LC END) AS nmv_aff\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s\\n  LEFT JOIN kam_excl e ON s.AFFILIATE_ID = e.affiliate_id AND s.SIT_SITE_ID = e.sit_site_id\\n  WHERE e.affiliate_id IS NULL\\n    AND s.AFFILIATE_ID IS NOT NULL AND s.AFFILIATE_ID != 0\\n    AND s.ORD_STATUS = 'paid' AND s.SIT_SITE_ID = s.AFFILIATE_SIT_SITE_ID\\n    AND s.ORD_CREATED_DT >= '${D.HIST}'\\n    AND s.SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND ((s.ORD_CREATED_DT >= '${D.ENIGMA}' AND s.NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (s.ORD_CREATED_DT < '${D.ENIGMA}' AND s.NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n  GROUP BY 1,2,3\\n),\\nfirst_sale AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(mes) AS first_month\\n  FROM monthly_sales GROUP BY 1,2\\n),\\nsegments AS (\\n  SELECT c.SIT_SITE_ID, c.AFFILIATE_ID, c.mes, c.nmv_aff,\\n    CASE WHEN f.first_month = c.mes THEN 'new'\\n         WHEN p.AFFILIATE_ID IS NULL THEN 'recovered'\\n         ELSE 'recurrent' END AS segment\\n  FROM monthly_sales c\\n  JOIN first_sale f USING (SIT_SITE_ID, AFFILIATE_ID)\\n  LEFT JOIN monthly_sales p\\n    ON c.SIT_SITE_ID = p.SIT_SITE_ID AND c.AFFILIATE_ID = p.AFFILIATE_ID\\n    AND p.mes = DATE_SUB(c.mes, INTERVAL 1 MONTH)\\n)\\nSELECT mes, SIT_SITE_ID, segment,\\n  COUNT(DISTINCT AFFILIATE_ID) AS active_aff,\\n  SUM(nmv_aff) AS nmv_aff,\\n  SAFE_DIVIDE(SUM(nmv_aff), COUNT(DISTINCT AFFILIATE_ID)) AS npa\\nFROM segments\\nGROUP BY 1,2,3\\nORDER BY mes, SIT_SITE_ID, segment\",\n  \"nmv_weekly\": \"WITH ts AS (\\n  SELECT EXTRACT(YEAR FROM DT) AS yr, EXTRACT(ISOWEEK FROM DT) AS wk,\\n    SIT_SITE_ID, SUM(NMV_AFF) AS nmv_aff_total, SUM(NMV_TS) AS nmv_ts\\n  FROM `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`\\n  WHERE DT >= '${D.W8}' AND DT < '${D.CUR}'\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') GROUP BY 1,2,3\\n),\\nbeh AS (\\n  SELECT EXTRACT(YEAR FROM dt) AS yr, EXTRACT(ISOWEEK FROM dt) AS wk,\\n    sit_site_id, active_aff\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_BEHAVIOUR`\\n  WHERE period = 'WEEK' AND sit_site_id IN ('MLB','MLM','MLC','MLA') AND dt >= '${D.W8}'\\n)\\nSELECT t.yr, t.wk, t.SIT_SITE_ID, 'all' AS seg,\\n  t.nmv_aff_total AS nmv_aff, t.nmv_ts,\\n  SAFE_DIVIDE(t.nmv_aff_total,t.nmv_ts) AS share_ts,\\n  b.active_aff, SAFE_DIVIDE(t.nmv_aff_total,b.active_aff) AS npa\\nFROM ts t LEFT JOIN beh b USING(yr,wk,SIT_SITE_ID)\\nORDER BY yr, wk, SIT_SITE_ID\",\n  \"nmv_mtd\": \"WITH total AS (\\n  SELECT SIT_SITE_ID,\\n    SUM(CASE WHEN DT BETWEEN '${D.CUR}' AND '${D.YEST}'      THEN NMV_AFF ELSE 0 END) AS nmv_curr,\\n    SUM(CASE WHEN DT BETWEEN '${D.CUR}' AND '${D.YEST}'      THEN NMV_TS  ELSE 0 END) AS ts_curr,\\n    SUM(CASE WHEN DT BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_AFF ELSE 0 END) AS nmv_prev,\\n    SUM(CASE WHEN DT BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_TS  ELSE 0 END) AS ts_prev\\n  FROM `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`\\n  WHERE DT >= '${D.PREV}' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') GROUP BY 1\\n),\\nlt_nmv AS (\\n  SELECT SIT_SITE_ID,\\n    SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.CUR}' AND '${D.YEST}'      THEN NMV_AFF ELSE 0 END) AS lt_nmv_curr,\\n    SUM(CASE WHEN CAST(DT AS DATE) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN NMV_AFF ELSE 0 END) AS lt_nmv_prev\\n  FROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`\\n  WHERE CAST(DT AS DATE) >= '${D.PREV}'\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND SUB_DEFINITION = 'LT' GROUP BY 1\\n),\\nkam_excl AS (\\n  SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_TYPE`\\n  UNION DISTINCT\\n  SELECT DISTINCT cus_cust_id_aff, sit_site_id\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_KA_CATEGORIES`\\n  WHERE segment = 'Potential KAM'\\n),\\nlt_active AS (\\n  SELECT s.SIT_SITE_ID,\\n    COUNT(DISTINCT CASE WHEN s.ORD_CREATED_DT BETWEEN '${D.CUR}' AND '${D.YEST}'      THEN s.AFFILIATE_ID END) AS lt_active_curr,\\n    COUNT(DISTINCT CASE WHEN s.ORD_CREATED_DT BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN s.AFFILIATE_ID END) AS lt_active_prev\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s\\n  LEFT JOIN kam_excl e ON s.AFFILIATE_ID = e.affiliate_id AND s.SIT_SITE_ID = e.sit_site_id\\n  WHERE e.affiliate_id IS NULL\\n    AND s.AFFILIATE_ID IS NOT NULL AND s.AFFILIATE_ID != 0\\n    AND s.ORD_CREATED_DT >= '${D.PREV}'\\n    AND s.SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n  GROUP BY 1\\n)\\nSELECT t.SIT_SITE_ID, t.nmv_curr, t.ts_curr, t.nmv_prev, t.ts_prev,\\n  n.lt_nmv_curr, n.lt_nmv_prev, a.lt_active_curr, a.lt_active_prev\\nFROM total t\\nLEFT JOIN lt_nmv n USING(SIT_SITE_ID)\\nLEFT JOIN lt_active a USING(SIT_SITE_ID)\",\n  \"nmv_pacing\": \"-- Para M-1 a M-6: NMV acumulado al día D del mes vs cierre total\\n-- Pacing ratio = nmv_at_day / nmv_full → base para proyección 6 meses\\nSELECT\\n  SIT_SITE_ID AS site,\\n  FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(DT, MONTH)) AS month_start,\\n  SUM(CASE WHEN EXTRACT(DAY FROM DT) <= ${D.DAY_OF_MONTH} THEN NMV_AFF ELSE 0 END) AS nmv_at_day,\\n  SUM(NMV_AFF) AS nmv_full\\nFROM `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`\\nWHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n  AND DT >= '${D.M6}'\\n  AND DT < '${D.CUR}'\\nGROUP BY site, month_start\\nORDER BY site, month_start\",\n  \"data_freshness\": \"-- MAX fecha disponible por tabla fuente — para el tag \\\"Datos cerrados hasta el X inclusive\\\"\\nSELECT 'total_site'    AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DT)) AS max_dt\\nFROM `meli-bi-data.WHOWNER.BT_SC_TOTAL_SITE_AFILIADOS`\\nWHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\nUNION ALL\\nSELECT 'affiliate_base' AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(CAST(DT AS DATE))) AS max_dt\\nFROM `meli-bi-data.WHOWNER.BT_SC_AFFILIATE_BASE`\\nWHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\nUNION ALL\\nSELECT 'attr_daily'    AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DATE(ORD_CREATED_DT))) AS max_dt\\nFROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\nWHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n  AND ORD_STATUS = 'paid' AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\nUNION ALL\\nSELECT 'registrations' AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DATE(ds))) AS max_dt\\nFROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`\\nWHERE site_id IN ('MLB','MLM','MLC','MLA')\\nUNION ALL\\nSELECT 'landing'       AS tbl, FORMAT_DATE('%Y-%m-%d', MAX(DATE(ds))) AS max_dt\\nFROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_REGISTRATION_JOURNEY`\\nWHERE page = 'landing'\",\n  \"act1\": \"WITH register AS (\\n  SELECT USER_ID, SITE_ID, DATE_TRUNC(DATE(DATE_REGISTER),MONTH) AS mes_reg\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_AFFILIATE`\\n  WHERE DATE_REGISTER >= '${D.HIST}' AND SITE_ID IN ('MLB','MLM','MLC','MLA')\\n),\\nfirst_sale AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID,\\n    DATE_TRUNC(MIN(ORD_CREATED_DT),MONTH) AS mes_primera_venta\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_STATUS='paid'\\n    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.HIST}'\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)\\n      OR (ORD_CREATED_DT<'${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))\\n  GROUP BY 1,2\\n)\\nSELECT r.SITE_ID, r.mes_reg,\\n  COUNT(DISTINCT r.USER_ID) AS total_registros,\\n  COUNT(DISTINCT IF(f.mes_primera_venta=r.mes_reg, r.USER_ID, NULL)) AS activaron_mismo_mes,\\n  ROUND(SAFE_DIVIDE(COUNT(DISTINCT IF(f.mes_primera_venta=r.mes_reg,r.USER_ID,NULL)),\\n    COUNT(DISTINCT r.USER_ID))*100,1) AS pct_activaron\\nFROM register r\\nLEFT JOIN first_sale f ON r.USER_ID=f.AFFILIATE_ID AND r.SITE_ID=f.SIT_SITE_ID\\nGROUP BY 1,2 ORDER BY SITE_ID, mes_reg\",\n  \"act2\": \"WITH register AS (\\n  SELECT USER_ID, SITE_ID, DATE_TRUNC(DATE(DATE_REGISTER),MONTH) AS mes_reg,\\n    DATE(TIMESTAMP_SUB(TIMESTAMP(DATE_REGISTER), INTERVAL 4 HOUR)) AS date_reg_adj\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_AFFILIATE`\\n  WHERE DATE_REGISTER >= '${D.HIST}' AND SITE_ID IN ('MLB','MLM','MLC','MLA')\\n),\\nfirst_sale AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(ORD_CREATED_DT) AS first_sale_dt\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_STATUS='paid'\\n    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.HIST}'\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)\\n      OR (ORD_CREATED_DT<'${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))\\n  GROUP BY 1,2\\n),\\nseg AS (\\n  SELECT r.SITE_ID, r.mes_reg,\\n    CASE WHEN f.first_sale_dt IS NULL THEN 'no_act'\\n         WHEN DATE_DIFF(f.first_sale_dt,r.date_reg_adj,DAY)<=7  THEN 'd7'\\n         WHEN DATE_DIFF(f.first_sale_dt,r.date_reg_adj,DAY)<=15 THEN 'd15'\\n         WHEN DATE_DIFF(f.first_sale_dt,r.date_reg_adj,DAY)<=30 THEN 'd30'\\n         WHEN DATE_DIFF(f.first_sale_dt,r.date_reg_adj,DAY)<=45 THEN 'd45'\\n         ELSE 'd46p' END AS cohort\\n  FROM register r\\n  LEFT JOIN first_sale f ON r.USER_ID=f.AFFILIATE_ID AND r.SITE_ID=f.SIT_SITE_ID\\n)\\nSELECT SITE_ID, mes_reg, COUNT(*) AS total,\\n  ROUND(COUNTIF(cohort='d7') /COUNT(*)*100,1) AS pct_d7,\\n  ROUND(COUNTIF(cohort='d15')/COUNT(*)*100,1) AS pct_d15,\\n  ROUND(COUNTIF(cohort='d30')/COUNT(*)*100,1) AS pct_d30,\\n  ROUND(COUNTIF(cohort='d45')/COUNT(*)*100,1) AS pct_d45,\\n  ROUND(COUNTIF(cohort='d46p')/COUNT(*)*100,1) AS pct_d46p,\\n  ROUND(COUNTIF(cohort='no_act')/COUNT(*)*100,1) AS pct_no_act\\nFROM seg GROUP BY 1,2 ORDER BY SITE_ID, mes_reg\",\n  \"act_source\": \"WITH reg_src AS (\\n  SELECT\\n    USER_ID,\\n    SITE_ID,\\n    DATE_TRUNC(DATE(ds), MONTH) AS mes_reg,\\n    CASE\\n      WHEN LOWER(origen_grouped) LIKE 'pom%'\\n        OR LOWER(origen_grouped) IN ('paid media','tiktok','facebook','google','instagram','twitter','youtube','paid','x')\\n      THEN 'pom'\\n      WHEN LOWER(origen_grouped) LIKE 'direct%'\\n        OR LOWER(origen_grouped) IN ('app','web')\\n      THEN 'direct'\\n      ELSE NULL\\n    END AS canal\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_REGISTRATION_CHANNEL`\\n  WHERE DATE(ds) >= '${D.HIST}'\\n    AND SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND (\\n      LOWER(origen_grouped) LIKE 'pom%'\\n      OR LOWER(origen_grouped) IN ('paid media','tiktok','facebook','google','instagram','twitter','youtube','paid','x')\\n      OR LOWER(origen_grouped) LIKE 'direct%'\\n      OR LOWER(origen_grouped) IN ('app','web')\\n    )\\n),\\nfirst_sale AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID,\\n    DATE_TRUNC(MIN(ORD_CREATED_DT), MONTH) AS mes_primera_venta\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_STATUS='paid'\\n    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.HIST}'\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))\\n  GROUP BY 1, 2\\n)\\nSELECT r.SITE_ID AS site_id, r.mes_reg, r.canal,\\n  COUNT(DISTINCT r.USER_ID) AS total_registros,\\n  COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.USER_ID, NULL)) AS activaron_mismo_mes,\\n  ROUND(SAFE_DIVIDE(\\n    COUNT(DISTINCT IF(f.mes_primera_venta = r.mes_reg, r.USER_ID, NULL)),\\n    COUNT(DISTINCT r.USER_ID)) * 100, 1) AS pct_activaron\\nFROM reg_src r\\nLEFT JOIN first_sale f ON CAST(r.USER_ID AS INT64) = f.AFFILIATE_ID AND r.SITE_ID = f.SIT_SITE_ID\\nGROUP BY 1, 2, 3 ORDER BY site_id, mes_reg, canal\",\n  \"act_new_days\": \"WITH register AS (\\n  SELECT USER_ID, SITE_ID,\\n    DATE(TIMESTAMP_SUB(TIMESTAMP(DATE_REGISTER), INTERVAL 4 HOUR)) AS date_reg_adj\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_AFFILIATE`\\n  WHERE DATE_REGISTER >= '${D.HIST}' AND SITE_ID IN ('MLB','MLM','MLC','MLA')\\n),\\nfirst_sale AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID,\\n    DATE_TRUNC(MIN(ORD_CREATED_DT), MONTH) AS mes_primera_venta,\\n    MIN(ORD_CREATED_DT) AS first_sale_dt\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_STATUS='paid'\\n    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.HIST}'\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))\\n  GROUP BY 1, 2\\n)\\nSELECT r.SITE_ID, f.mes_primera_venta AS mes,\\n  COUNT(DISTINCT r.USER_ID) AS total_new,\\n  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) = 0)     / COUNT(*) * 100, 1) AS pct_d0,\\n  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) BETWEEN 1  AND 7)  / COUNT(*) * 100, 1) AS pct_d1_7,\\n  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) BETWEEN 8  AND 30) / COUNT(*) * 100, 1) AS pct_d8_30,\\n  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) BETWEEN 31 AND 60) / COUNT(*) * 100, 1) AS pct_d31_60,\\n  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) > 60)              / COUNT(*) * 100, 1) AS pct_d60p\\nFROM register r\\nINNER JOIN first_sale f ON r.USER_ID = f.AFFILIATE_ID AND r.SITE_ID = f.SIT_SITE_ID\\nGROUP BY 1, 2 ORDER BY SITE_ID, mes\",\n  \"churn\": \"WITH monthly_active AS (\\n  SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT,MONTH) AS month, AFFILIATE_ID\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS='paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.DEEP}'\\n    AND ORD_CREATED_DT < DATE_TRUNC(CURRENT_DATE(),MONTH)\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)\\n      OR (ORD_CREATED_DT<'${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))\\n  GROUP BY 1,2,3\\n),\\nfirst_active AS (SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(month) AS first_month FROM monthly_active GROUP BY 1,2),\\nflagged AS (\\n  SELECT ma.SIT_SITE_ID, ma.month, ma.AFFILIATE_ID, fa.first_month=ma.month AS is_new\\n  FROM monthly_active ma LEFT JOIN first_active fa USING(SIT_SITE_ID,AFFILIATE_ID)\\n),\\nmetrics AS (\\n  SELECT prev.SIT_SITE_ID, DATE_ADD(prev.month,INTERVAL 1 MONTH) AS month,\\n    COUNT(DISTINCT prev.AFFILIATE_ID) AS active_prev,\\n    COUNT(DISTINCT IF(curr.AFFILIATE_ID IS NULL,prev.AFFILIATE_ID,NULL)) AS churned,\\n    COUNT(DISTINCT IF(curr.AFFILIATE_ID IS NULL AND prev.is_new=TRUE,prev.AFFILIATE_ID,NULL)) AS churned_new,\\n    COUNT(DISTINCT IF(curr.AFFILIATE_ID IS NULL AND prev.is_new=FALSE AND m2.AFFILIATE_ID IS NULL,prev.AFFILIATE_ID,NULL)) AS churned_recovered,\\n    COUNT(DISTINCT IF(curr.AFFILIATE_ID IS NULL AND prev.is_new=FALSE AND m2.AFFILIATE_ID IS NOT NULL,prev.AFFILIATE_ID,NULL)) AS churned_recurrent\\n  FROM flagged prev\\n  LEFT JOIN monthly_active curr\\n    ON prev.AFFILIATE_ID=curr.AFFILIATE_ID AND prev.SIT_SITE_ID=curr.SIT_SITE_ID\\n    AND curr.month=DATE_ADD(prev.month,INTERVAL 1 MONTH)\\n  LEFT JOIN monthly_active m2\\n    ON prev.AFFILIATE_ID=m2.AFFILIATE_ID AND prev.SIT_SITE_ID=m2.SIT_SITE_ID\\n    AND m2.month=DATE_SUB(prev.month,INTERVAL 1 MONTH)\\n  GROUP BY 1,2\\n)\\nSELECT month, SIT_SITE_ID, active_prev, churned, churned_new, churned_recovered, churned_recurrent,\\n  ROUND(SAFE_DIVIDE(churned_new,active_prev)*100,2) AS pct_churn_new,\\n  ROUND(SAFE_DIVIDE(churned_new,churned)*100,1) AS pct_churned_new,\\n  ROUND(SAFE_DIVIDE(churned_recovered,churned)*100,1) AS pct_churned_recovered,\\n  ROUND(SAFE_DIVIDE(churned_recurrent,churned)*100,1) AS pct_churned_recurrent\\nFROM metrics WHERE month >= '${D.HIST}' AND month < DATE_TRUNC(CURRENT_DATE(),MONTH) ORDER BY SIT_SITE_ID, month\",\n  \"churn_comp\": \"WITH monthly_active AS (\\n  SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT,MONTH) AS month, AFFILIATE_ID\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS='paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.DEEP}'\\n    AND ORD_CREATED_DT < DATE_TRUNC(CURRENT_DATE(),MONTH)\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)\\n      OR (ORD_CREATED_DT<'${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))\\n  GROUP BY 1,2,3\\n),\\nfirst_active AS (SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(month) AS first_month FROM monthly_active GROUP BY 1,2),\\nchurners AS (\\n  SELECT prev.SIT_SITE_ID,\\n    DATE_ADD(prev.month,INTERVAL 1 MONTH) AS churn_month,\\n    DATE_DIFF(prev.month,fa.first_month,MONTH)+1 AS months_active\\n  FROM monthly_active prev\\n  LEFT JOIN monthly_active curr\\n    ON prev.AFFILIATE_ID=curr.AFFILIATE_ID AND prev.SIT_SITE_ID=curr.SIT_SITE_ID\\n    AND curr.month=DATE_ADD(prev.month,INTERVAL 1 MONTH)\\n  JOIN first_active fa\\n    ON fa.SIT_SITE_ID=prev.SIT_SITE_ID AND fa.AFFILIATE_ID=prev.AFFILIATE_ID\\n  WHERE curr.AFFILIATE_ID IS NULL\\n)\\nSELECT churn_month AS month, SIT_SITE_ID, COUNT(*) AS total_churned,\\n  ROUND(COUNTIF(months_active=1)/COUNT(*)*100,1) AS pct_omw,\\n  ROUND(COUNTIF(months_active BETWEEN 2 AND 3)/COUNT(*)*100,1) AS pct_early,\\n  ROUND(COUNTIF(months_active BETWEEN 4 AND 6)/COUNT(*)*100,1) AS pct_mid,\\n  ROUND(COUNTIF(months_active>=7)/COUNT(*)*100,1) AS pct_established\\nFROM churners WHERE churn_month >= '${D.HIST}' AND churn_month < DATE_TRUNC(CURRENT_DATE(),MONTH) GROUP BY 1,2 ORDER BY 1,2\",\n  \"churn_mtd\": \"WITH window_sales AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID,\\n    MAX(CASE WHEN DATE(ORD_CREATED_DT) BETWEEN '${D.CUR}' AND '${D.YEST}' THEN 1 ELSE 0 END) AS in_curr,\\n    MAX(CASE WHEN DATE(ORD_CREATED_DT) BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' THEN 1 ELSE 0 END) AS in_prev,\\n    MAX(CASE WHEN DATE_TRUNC(ORD_CREATED_DT,MONTH)='${D.PREV}' THEN 1 ELSE 0 END) AS in_apr_full,\\n    MAX(CASE WHEN DATE_TRUNC(ORD_CREATED_DT,MONTH)='${D.M2}' THEN 1 ELSE 0 END) AS in_mar_full,\\n    MIN(DATE_TRUNC(ORD_CREATED_DT,MONTH)) AS first_month,\\n    COUNT(DISTINCT CASE WHEN DATE_TRUNC(ORD_CREATED_DT,MONTH)<='${D.PREV}'\\n      THEN DATE_TRUNC(ORD_CREATED_DT,MONTH) END) AS months_hist\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS='paid' AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_CREATED_DT >= '${D.DEEP}'\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)\\n      OR (ORD_CREATED_DT<'${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))\\n  GROUP BY 1,2\\n)\\nSELECT SIT_SITE_ID,\\n  COUNT(DISTINCT IF(in_curr=0 AND first_month='${D.PREV}' AND in_apr_full=1,AFFILIATE_ID,NULL)) AS curr_churned_new,\\n  COUNT(DISTINCT IF(in_apr_full=1,AFFILIATE_ID,NULL)) AS apr_active_base,\\n  ROUND(SAFE_DIVIDE(\\n    COUNT(DISTINCT IF(in_curr=0 AND first_month='${D.PREV}' AND in_apr_full=1,AFFILIATE_ID,NULL)),\\n    COUNT(DISTINCT IF(in_apr_full=1,AFFILIATE_ID,NULL)))*100,2) AS pct_churn_new_curr,\\n  COUNT(DISTINCT IF(in_prev=0 AND first_month='${D.M2}' AND in_mar_full=1,AFFILIATE_ID,NULL)) AS prev_churned_new,\\n  COUNT(DISTINCT IF(in_mar_full=1,AFFILIATE_ID,NULL)) AS mar_active_base,\\n  ROUND(SAFE_DIVIDE(\\n    COUNT(DISTINCT IF(in_prev=0 AND first_month='${D.M2}' AND in_mar_full=1,AFFILIATE_ID,NULL)),\\n    COUNT(DISTINCT IF(in_mar_full=1,AFFILIATE_ID,NULL)))*100,2) AS pct_churn_new_prev,\\n  ROUND(SAFE_DIVIDE(COUNTIF(in_apr_full=1 AND in_curr=0 AND months_hist=1),\\n    COUNTIF(in_apr_full=1 AND in_curr=0))*100,1) AS curr_pct_omw,\\n  ROUND(SAFE_DIVIDE(COUNTIF(in_apr_full=1 AND in_curr=0 AND months_hist BETWEEN 2 AND 3),\\n    COUNTIF(in_apr_full=1 AND in_curr=0))*100,1) AS curr_pct_early,\\n  ROUND(SAFE_DIVIDE(COUNTIF(in_apr_full=1 AND in_curr=0 AND months_hist BETWEEN 4 AND 6),\\n    COUNTIF(in_apr_full=1 AND in_curr=0))*100,1) AS curr_pct_mid,\\n  ROUND(SAFE_DIVIDE(COUNTIF(in_apr_full=1 AND in_curr=0 AND months_hist>=7),\\n    COUNTIF(in_apr_full=1 AND in_curr=0))*100,1) AS curr_pct_established,\\n  ROUND(SAFE_DIVIDE(COUNTIF(in_mar_full=1 AND in_prev=0 AND months_hist=1),\\n    COUNTIF(in_mar_full=1 AND in_prev=0))*100,1) AS prev_pct_omw,\\n  ROUND(SAFE_DIVIDE(COUNTIF(in_mar_full=1 AND in_prev=0 AND months_hist BETWEEN 2 AND 3),\\n    COUNTIF(in_mar_full=1 AND in_prev=0))*100,1) AS prev_pct_early,\\n  ROUND(SAFE_DIVIDE(COUNTIF(in_mar_full=1 AND in_prev=0 AND months_hist BETWEEN 4 AND 6),\\n    COUNTIF(in_mar_full=1 AND in_prev=0))*100,1) AS prev_pct_mid,\\n  ROUND(SAFE_DIVIDE(COUNTIF(in_mar_full=1 AND in_prev=0 AND months_hist>=7),\\n    COUNTIF(in_mar_full=1 AND in_prev=0))*100,1) AS prev_pct_established\\nFROM window_sales GROUP BY 1\",\n  \"earnings_buckets\": \"WITH kam_excl AS (\\n  SELECT DISTINCT CAST(cus_cust_id_aff AS INT64) AS affiliate_id, sit_site_id\\n  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_AFFILIATE_TYPE`\\n  UNION DISTINCT\\n  SELECT DISTINCT AFFILIATE_ID, SIT_SITE_ID\\n  FROM `meli-bi-data.WHOWNER.LK_AFFI_AFFILIATES_KA`\\n  WHERE AFFILIATE_SEGMENT = 'Potential KAM' AND END_DT IS NULL\\n),\\nmonthly_active AS (\\n  SELECT s.SIT_SITE_ID, DATE_TRUNC(s.ORD_CREATED_DT, MONTH) AS month, s.AFFILIATE_ID\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY` s\\n  LEFT JOIN kam_excl e ON s.AFFILIATE_ID = e.affiliate_id AND s.SIT_SITE_ID = e.sit_site_id\\n  WHERE e.affiliate_id IS NULL\\n    AND s.ORD_STATUS = 'paid' AND s.SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND s.SIT_SITE_ID = s.AFFILIATE_SIT_SITE_ID\\n    AND s.ORD_CREATED_DT >= '${D.DEEP}'\\n    AND s.ORD_CREATED_DT < DATE_TRUNC(CURRENT_DATE(), MONTH)\\n    AND ((s.ORD_CREATED_DT >= '${D.ENIGMA}' AND s.NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (s.ORD_CREATED_DT < '${D.ENIGMA}' AND s.NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n  GROUP BY 1,2,3\\n),\\nchurners AS (\\n  SELECT prev.SIT_SITE_ID, prev.AFFILIATE_ID,\\n    prev.month AS last_active_month,\\n    DATE_ADD(prev.month, INTERVAL 1 MONTH) AS churn_month\\n  FROM monthly_active prev\\n  LEFT JOIN monthly_active curr\\n    ON prev.AFFILIATE_ID = curr.AFFILIATE_ID AND prev.SIT_SITE_ID = curr.SIT_SITE_ID\\n    AND curr.month = DATE_ADD(prev.month, INTERVAL 1 MONTH)\\n  WHERE curr.AFFILIATE_ID IS NULL\\n    AND DATE_ADD(prev.month, INTERVAL 1 MONTH) >= '${D.HIST}'\\n    AND DATE_ADD(prev.month, INTERVAL 1 MONTH) < DATE_TRUNC(CURRENT_DATE(), MONTH)\\n),\\nmonthly_earnings AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID, DATE_TRUNC(ORD_CREATED_DT, MONTH) AS month,\\n    SUM(EARNINGS_TOTAL_AMT_LC) AS earnings\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND IS_PAYABLE_FLAG = TRUE\\n  GROUP BY 1,2,3\\n),\\nchurner_earnings AS (\\n  SELECT c.SIT_SITE_ID, c.churn_month, c.AFFILIATE_ID,\\n    COALESCE(SUM(IF(me.month <= c.last_active_month, me.earnings, 0)), 0) AS earnings_lt\\n  FROM churners c\\n  LEFT JOIN monthly_earnings me\\n    ON me.SIT_SITE_ID = c.SIT_SITE_ID AND me.AFFILIATE_ID = c.AFFILIATE_ID\\n  GROUP BY 1,2,3\\n),\\nbucketed AS (\\n  SELECT SIT_SITE_ID, churn_month,\\n    CASE\\n      WHEN SIT_SITE_ID = 'MLA' THEN CASE\\n        WHEN earnings_lt <= 0     THEN 0\\n        WHEN earnings_lt < 30000  THEN 1\\n        WHEN earnings_lt < 50000  THEN 2\\n        WHEN earnings_lt < 100000 THEN 3\\n        ELSE 4 END\\n      WHEN SIT_SITE_ID = 'MLM' THEN CASE\\n        WHEN earnings_lt <= 0   THEN 0\\n        WHEN earnings_lt < 100  THEN 1\\n        WHEN earnings_lt < 300  THEN 2\\n        WHEN earnings_lt < 600  THEN 3\\n        ELSE 4 END\\n      WHEN SIT_SITE_ID = 'MLC' THEN CASE\\n        WHEN earnings_lt <= 0     THEN 0\\n        WHEN earnings_lt < 20000  THEN 1\\n        WHEN earnings_lt < 50000  THEN 2\\n        WHEN earnings_lt < 100000 THEN 3\\n        ELSE 4 END\\n      WHEN SIT_SITE_ID = 'MLB' THEN CASE\\n        WHEN earnings_lt <= 0  THEN 0\\n        WHEN earnings_lt < 30  THEN 1\\n        WHEN earnings_lt < 100 THEN 2\\n        WHEN earnings_lt < 200 THEN 3\\n        WHEN earnings_lt < 500 THEN 4\\n        ELSE 5 END\\n    END AS bucket_idx\\n  FROM churner_earnings\\n)\\nSELECT SIT_SITE_ID AS sit_site_id,\\n  FORMAT_DATE('%Y-%m', churn_month) AS mes,\\n  bucket_idx, COUNT(*) AS users\\nFROM bucketed\\nGROUP BY 1,2,3\\nORDER BY 1,2,3\",\n  \"retention_by_segment\": \"WITH monthly_active AS (\\n  SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT, MONTH) AS month, AFFILIATE_ID\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS = 'paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND ORD_CREATED_DT >= '${D.DEEP}'\\n    AND ORD_CREATED_DT < DATE_TRUNC(CURRENT_DATE(), MONTH)\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n  GROUP BY 1,2,3\\n),\\nfirst_active AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(month) AS first_month\\n  FROM monthly_active GROUP BY 1,2\\n),\\nsegs AS (\\n  SELECT c.SIT_SITE_ID, c.month, c.AFFILIATE_ID,\\n    CASE WHEN f.first_month = c.month THEN 'new'\\n         WHEN p.AFFILIATE_ID IS NOT NULL THEN 'recurrent'\\n         ELSE 'recovered' END AS segment\\n  FROM monthly_active c\\n  JOIN first_active f USING (SIT_SITE_ID, AFFILIATE_ID)\\n  LEFT JOIN monthly_active p\\n    ON c.SIT_SITE_ID = p.SIT_SITE_ID AND c.AFFILIATE_ID = p.AFFILIATE_ID\\n    AND p.month = DATE_SUB(c.month, INTERVAL 1 MONTH)\\n),\\n-- Una fila por segmento + una fila 'total' (todos los activos del mes) como referencia.\\njoined AS (\\n  SELECT s.SIT_SITE_ID, s.month, s.segment,\\n    (nx.AFFILIATE_ID IS NOT NULL) AS retenido\\n  FROM segs s\\n  LEFT JOIN monthly_active nx\\n    ON s.SIT_SITE_ID = nx.SIT_SITE_ID AND s.AFFILIATE_ID = nx.AFFILIATE_ID\\n    AND nx.month = DATE_ADD(s.month, INTERVAL 1 MONTH)\\n  -- El ultimo mes cerrado no se puede evaluar: su M+1 todavia no cerro.\\n  WHERE s.month >= '${D.HIST}'\\n    AND s.month < DATE_SUB(DATE_TRUNC(CURRENT_DATE(), MONTH), INTERVAL 1 MONTH)\\n)\\nSELECT SIT_SITE_ID AS sit_site_id, FORMAT_DATE('%Y-%m', month) AS mes, segment,\\n  COUNT(*) AS cohorte, COUNTIF(retenido) AS retenidos,\\n  ROUND(SAFE_DIVIDE(COUNTIF(retenido), COUNT(*)) * 100, 1) AS pct_retencion\\nFROM joined GROUP BY 1,2,3\\nUNION ALL\\nSELECT SIT_SITE_ID AS sit_site_id, FORMAT_DATE('%Y-%m', month) AS mes, 'total' AS segment,\\n  COUNT(*) AS cohorte, COUNTIF(retenido) AS retenidos,\\n  ROUND(SAFE_DIVIDE(COUNTIF(retenido), COUNT(*)) * 100, 1) AS pct_retencion\\nFROM joined GROUP BY 1,2\\nORDER BY sit_site_id, mes, segment\",\n  \"retention_cohort_curve\": \"WITH monthly_active AS (\\n  SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT, MONTH) AS month, AFFILIATE_ID\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS = 'paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND ORD_CREATED_DT >= '${D.DEEP}'\\n    AND ORD_CREATED_DT < DATE_TRUNC(CURRENT_DATE(), MONTH)\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n  GROUP BY 1,2,3\\n),\\nfirst_active AS (\\n  SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(month) AS cohort_month\\n  FROM monthly_active GROUP BY 1,2\\n),\\ncohort AS (\\n  SELECT * FROM first_active\\n  WHERE cohort_month >= DATE_SUB(DATE_TRUNC(CURRENT_DATE(), MONTH), INTERVAL 9 MONTH)\\n    AND cohort_month < DATE_TRUNC(CURRENT_DATE(), MONTH)\\n),\\nsizes AS (\\n  SELECT SIT_SITE_ID, cohort_month, COUNT(*) AS cohort_size\\n  FROM cohort GROUP BY 1,2\\n),\\nobs AS (\\n  SELECT c.SIT_SITE_ID, c.cohort_month,\\n    DATE_DIFF(a.month, c.cohort_month, MONTH) AS mes_offset,\\n    COUNT(DISTINCT a.AFFILIATE_ID) AS activos\\n  FROM cohort c\\n  JOIN monthly_active a\\n    ON a.SIT_SITE_ID = c.SIT_SITE_ID AND a.AFFILIATE_ID = c.AFFILIATE_ID\\n  WHERE DATE_DIFF(a.month, c.cohort_month, MONTH) BETWEEN 1 AND 6\\n  GROUP BY 1,2,3\\n)\\nSELECT o.SIT_SITE_ID AS sit_site_id,\\n  FORMAT_DATE('%Y-%m', o.cohort_month) AS cohorte,\\n  o.mes_offset, s.cohort_size, o.activos,\\n  ROUND(SAFE_DIVIDE(o.activos, s.cohort_size) * 100, 1) AS pct_retencion\\nFROM obs o\\nJOIN sizes s ON s.SIT_SITE_ID = o.SIT_SITE_ID AND s.cohort_month = o.cohort_month\\nORDER BY 1,2,3\",\n  \"link_gen_monthly\": \"SELECT FORMAT_DATE('%Y-%m',EVENT_DT) AS mes, SIT_SITE_ID, COUNT(DISTINCT CUS_CUST_ID) AS generadores_links\\nFROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`\\nWHERE EVENT_DT >= '${D.HIST}' AND EVENT_DT <= CURRENT_DATE('-4')\\n  AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n  AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))\\n    OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'\\n    OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',\\n       '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',\\n       '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')\\n    OR PATH_NAME='/share/action')\\nGROUP BY mes, SIT_SITE_ID ORDER BY mes, SIT_SITE_ID\",\n  \"link_gen_daily\": \"SELECT EVENT_DT, SIT_SITE_ID, COUNT(DISTINCT CUS_CUST_ID) AS generadores_links\\nFROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`\\nWHERE EVENT_DT >= DATE_SUB(CURRENT_DATE('-4'), INTERVAL 35 DAY) AND EVENT_DT <= CURRENT_DATE('-4')\\n  AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n  AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))\\n    OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'\\n    OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',\\n       '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',\\n       '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')\\n    OR PATH_NAME='/share/action')\\nGROUP BY EVENT_DT, SIT_SITE_ID ORDER BY EVENT_DT, SIT_SITE_ID\",\n  \"link_gen_mtd_comp\": \"SELECT period, SIT_SITE_ID, COUNT(DISTINCT CUS_CUST_ID) AS generadores_links\\nFROM (\\n  SELECT 'curr' AS period, SIT_SITE_ID, CUS_CUST_ID FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`\\n  WHERE EVENT_DT >= DATE_TRUNC(CURRENT_DATE('-4'),MONTH) AND EVENT_DT <= CURRENT_DATE('-4')\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))\\n      OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'\\n      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',\\n         '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',\\n         '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')\\n      OR PATH_NAME='/share/action')\\n  UNION ALL\\n  SELECT 'prev' AS period, SIT_SITE_ID, CUS_CUST_ID FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`\\n  WHERE EVENT_DT >= DATE_TRUNC(DATE_SUB(CURRENT_DATE('-4'),INTERVAL 1 MONTH),MONTH)\\n    AND EVENT_DT <= DATE_ADD(\\n      DATE_TRUNC(DATE_SUB(CURRENT_DATE('-4'),INTERVAL 1 MONTH),MONTH),\\n      INTERVAL DATE_DIFF(CURRENT_DATE('-4'),DATE_TRUNC(CURRENT_DATE('-4'),MONTH),DAY) DAY)\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))\\n      OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'\\n      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',\\n         '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',\\n         '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')\\n      OR PATH_NAME='/share/action')\\n)\\nGROUP BY period, SIT_SITE_ID ORDER BY SIT_SITE_ID, period\",\n  \"link_gen_by_segment\": \"WITH monthly_active AS (\\n  SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT,MONTH) AS month, AFFILIATE_ID\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS='paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= '${D.DEEP}'\\n    AND ORD_CREATED_DT <= CURRENT_DATE('-4')\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC>0)\\n      OR (ORD_CREATED_DT<'${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))\\n  GROUP BY 1,2,3\\n),\\nfirst_active AS (SELECT SIT_SITE_ID, AFFILIATE_ID, MIN(month) AS first_month FROM monthly_active GROUP BY 1,2),\\ncurr_segs AS (\\n  SELECT curr.SIT_SITE_ID, curr.month, curr.AFFILIATE_ID,\\n    CASE WHEN fa.first_month=curr.month THEN 'new'\\n         WHEN prev.AFFILIATE_ID IS NOT NULL THEN 'recurrent'\\n         ELSE 'recovered' END AS segment\\n  FROM monthly_active curr\\n  LEFT JOIN first_active fa USING(SIT_SITE_ID,AFFILIATE_ID)\\n  LEFT JOIN monthly_active prev ON curr.AFFILIATE_ID=prev.AFFILIATE_ID AND curr.SIT_SITE_ID=prev.SIT_SITE_ID\\n    AND prev.month=DATE_SUB(curr.month,INTERVAL 1 MONTH)\\n),\\nchurn_segs AS (\\n  SELECT prev.SIT_SITE_ID, DATE_ADD(prev.month,INTERVAL 1 MONTH) AS month, prev.AFFILIATE_ID, 'churned' AS segment\\n  FROM monthly_active prev\\n  LEFT JOIN monthly_active curr ON prev.AFFILIATE_ID=curr.AFFILIATE_ID AND prev.SIT_SITE_ID=curr.SIT_SITE_ID\\n    AND curr.month=DATE_ADD(prev.month,INTERVAL 1 MONTH)\\n  WHERE curr.AFFILIATE_ID IS NULL\\n    AND DATE_ADD(prev.month,INTERVAL 1 MONTH) < DATE_TRUNC(CURRENT_DATE(),MONTH)\\n),\\nall_segs AS (SELECT * FROM curr_segs UNION ALL SELECT * FROM churn_segs),\\nlink_events AS (\\n  SELECT SIT_SITE_ID, DATE_TRUNC(EVENT_DT,MONTH) AS month, CUS_CUST_ID, COUNT(*) AS links_cnt\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`\\n  WHERE EVENT_DT >= '${D.HIST}' AND EVENT_DT <= CURRENT_DATE('-4')\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))\\n      OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'\\n      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',\\n         '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',\\n         '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')\\n      OR PATH_NAME='/share/action')\\n  GROUP BY 1,2,3\\n)\\nSELECT s.SIT_SITE_ID AS sit_site_id, FORMAT_DATE('%Y-%m',s.month) AS mes, s.segment,\\n  ROUND(SAFE_DIVIDE(SUM(COALESCE(le.links_cnt,0)),\\n    NULLIF(COUNT(DISTINCT IF(le.CUS_CUST_ID IS NOT NULL,s.AFFILIATE_ID,NULL)),0)),1) AS links_por_usuario\\nFROM all_segs s\\nLEFT JOIN link_events le ON s.AFFILIATE_ID=le.CUS_CUST_ID AND s.SIT_SITE_ID=le.SIT_SITE_ID AND s.month=le.month\\nWHERE s.month >= '${D.HIST}'\\nGROUP BY 1,2,3 ORDER BY mes,sit_site_id,segment\",\n  \"link_gen_earnings_by_status\": \"WITH link_events AS (\\n  SELECT SIT_SITE_ID, DATE_TRUNC(EVENT_DT, MONTH) AS mes, CUS_CUST_ID AS affiliate_id\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_TRACKS`\\n  WHERE EVENT_DT >= '${D.HIST}' AND EVENT_DT <= CURRENT_DATE('-4')\\n    AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND ((PATH_NAME='/affiliates/hub/share/select' AND JSON_VALUE(EVENT_DATA,'$.select_value') IN ('copy_link','copy_id'))\\n      OR PATH_NAME='/affiliates/linkbuilder/v1/generate' OR PATH_NAME='/affiliates/stripe/link'\\n      OR PATH_NAME IN ('/affiliates/stripe_webview/copy_link','/affiliates/stripe_webview/share_link',\\n         '/affiliates/stripe_webview/share_code','/affiliates/stripe_webview/copy_code',\\n         '/affiliates/stripe_webview/share_text_suggestion','/affiliates/stripe_webview/copy_text_suggestion')\\n      OR PATH_NAME='/share/action')\\n  GROUP BY 1,2,3\\n),\\nfirst_gen AS (\\n  SELECT SIT_SITE_ID, affiliate_id, MIN(mes) AS first_month\\n  FROM link_events GROUP BY 1,2\\n),\\ngen_status AS (\\n  SELECT c.SIT_SITE_ID, c.mes, c.affiliate_id,\\n    CASE WHEN f.first_month = c.mes THEN 'new'\\n         WHEN p.affiliate_id IS NOT NULL THEN 'recurrent'\\n         ELSE 'recovered' END AS segment\\n  FROM link_events c\\n  JOIN first_gen f ON c.SIT_SITE_ID = f.SIT_SITE_ID AND c.affiliate_id = f.affiliate_id\\n  LEFT JOIN link_events p ON c.SIT_SITE_ID = p.SIT_SITE_ID AND c.affiliate_id = p.affiliate_id\\n    AND p.mes = DATE_SUB(c.mes, INTERVAL 1 MONTH)\\n),\\nearners AS (\\n  SELECT SIT_SITE_ID, DATE_TRUNC(ORD_CREATED_DT, MONTH) AS mes, AFFILIATE_ID AS affiliate_id\\n  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`\\n  WHERE ORD_STATUS = 'paid' AND SIT_SITE_ID IN ('MLB','MLM','MLC','MLA')\\n    AND SIT_SITE_ID = AFFILIATE_SIT_SITE_ID\\n    AND ORD_CREATED_DT >= '${D.HIST}' AND ORD_CREATED_DT <= CURRENT_DATE('-4')\\n    AND ((ORD_CREATED_DT >= '${D.ENIGMA}' AND NMV_ENIGMA_TOTAL_AMT_LC > 0)\\n      OR (ORD_CREATED_DT < '${D.ENIGMA}' AND NMV_TD7DCALIB_TOTAL_AMT_LC > 0))\\n  GROUP BY 1,2,3\\n),\\nby_status AS (\\n  SELECT g.SIT_SITE_ID AS sit_site_id, FORMAT_DATE('%Y-%m', g.mes) AS mes, g.segment,\\n    COUNT(DISTINCT g.affiliate_id) AS generadores,\\n    COUNT(DISTINCT IF(e.affiliate_id IS NOT NULL, g.affiliate_id, NULL)) AS con_earnings\\n  FROM gen_status g\\n  LEFT JOIN earners e ON g.SIT_SITE_ID = e.SIT_SITE_ID AND g.affiliate_id = e.affiliate_id AND g.mes = e.mes\\n  GROUP BY 1,2,3\\n),\\ntotal AS (\\n  SELECT g.SIT_SITE_ID AS sit_site_id, FORMAT_DATE('%Y-%m', g.mes) AS mes, 'total' AS segment,\\n    COUNT(DISTINCT g.affiliate_id) AS generadores,\\n    COUNT(DISTINCT IF(e.affiliate_id IS NOT NULL, g.affiliate_id, NULL)) AS con_earnings\\n  FROM gen_status g\\n  LEFT JOIN earners e ON g.SIT_SITE_ID = e.SIT_SITE_ID AND g.affiliate_id = e.affiliate_id AND g.mes = e.mes\\n  GROUP BY 1,2\\n)\\nSELECT sit_site_id, mes, segment, generadores, con_earnings,\\n  ROUND(SAFE_DIVIDE(con_earnings, generadores) * 100, 1) AS pct_earnings\\nFROM by_status\\nUNION ALL\\nSELECT sit_site_id, mes, segment, generadores, con_earnings,\\n  ROUND(SAFE_DIVIDE(con_earnings, generadores) * 100, 1) AS pct_earnings\\nFROM total\\nORDER BY mes, sit_site_id, segment\",\n  \"mkt_context\": \"SELECT\\n  KPI_ID,\\n  SIT_SITE_ID,\\n  PERIOD,\\n  FORMAT_DATE('%Y-%m-%d', DT_TO) AS dt_to,\\n  SUM(VIZ.vl_num) AS value,\\n  SUM(VIZ.vl_num_cp) AS value_cp\\nFROM `meli-bi-data.WHOWNER.DM_MKT_KPI_STORE`\\nWHERE KPI_ID IN ('NMV-UMM-MARKETPLACE', 'SESSIONS-AMPL')\\n  AND SIT_SITE_ID IN ('MLB', 'MLM', 'MLC', 'MLA')\\n  AND (PERIOD = 'MONTHLY' OR (PERIOD = 'MTD' AND DT_TO >= DATE_TRUNC(CURRENT_DATE(), MONTH) AND DT_TO <= CURRENT_DATE()))\\n  AND COMPARISON = 'PP'\\n  AND ((KPI_ID = 'NMV-UMM-MARKETPLACE' AND CURRENCY = 'LC')\\n    OR (KPI_ID = 'SESSIONS-AMPL' AND CURRENCY = '-1'))\\n  AND DT_TO >= '${D.HIST}'\\nGROUP BY 1,2,3,4\\nORDER BY KPI_ID, SIT_SITE_ID, PERIOD, DT_TO\"\n};\n\nconst sql = {};\nfor (const [k, tpl] of Object.entries(TEMPLATES)) {\n  sql[k] = tpl.replace(/\\$\\{D\\.([A-Z_0-9]+)\\}/g, (_, name) => {\n    if (D[name] === undefined) throw new Error('Placeholder sin resolver: ' + name);\n    return D[name];\n  });\n}\nreturn [{ json: { D, sql } }];\n"
+      },
+      "id": "n-dates",
+      "name": "Fechas + SQL",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -200,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['behaviour'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-behaviour",
+      "name": "bq_behaviour",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        40,
+        180
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-behaviour",
+      "name": "agg_behaviour",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        160,
+        180
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['beh_mtd'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-beh_mtd",
+      "name": "bq_beh_mtd",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        300,
+        180
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-beh_mtd",
+      "name": "agg_beh_mtd",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        420,
+        180
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['beh_pacing'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-beh_pacing",
+      "name": "bq_beh_pacing",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        560,
+        180
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-beh_pacing",
+      "name": "agg_beh_pacing",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        680,
+        180
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['qr_rolling'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-qr_rolling",
+      "name": "bq_qr_rolling",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        820,
+        180
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-qr_rolling",
+      "name": "agg_qr_rolling",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        940,
+        180
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['registrations'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-registrations",
+      "name": "bq_registrations",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1080,
+        180
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-registrations",
+      "name": "agg_registrations",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1200,
+        180
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['reg_mtd'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-reg_mtd",
+      "name": "bq_reg_mtd",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1340,
+        180
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-reg_mtd",
+      "name": "agg_reg_mtd",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1460,
+        180
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['reg_pacing'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-reg_pacing",
+      "name": "bq_reg_pacing",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1600,
+        180
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-reg_pacing",
+      "name": "agg_reg_pacing",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1720,
+        180
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['landing_traffic'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-landing_traffic",
+      "name": "bq_landing_traffic",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1860,
+        180
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-landing_traffic",
+      "name": "agg_landing_traffic",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1980,
+        180
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['landing_pacing'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-landing_pacing",
+      "name": "bq_landing_pacing",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        40,
+        420
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-landing_pacing",
+      "name": "agg_landing_pacing",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        160,
+        420
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['spend_pom'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-spend_pom",
+      "name": "bq_spend_pom",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        300,
+        420
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-spend_pom",
+      "name": "agg_spend_pom",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        420,
+        420
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['nmv_monthly'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-nmv_monthly",
+      "name": "bq_nmv_monthly",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        560,
+        420
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-nmv_monthly",
+      "name": "agg_nmv_monthly",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        680,
+        420
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['nmv_lt_by_status'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-nmv_lt_by_status",
+      "name": "bq_nmv_lt_by_status",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        820,
+        420
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-nmv_lt_by_status",
+      "name": "agg_nmv_lt_by_status",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        940,
+        420
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['nmv_weekly'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-nmv_weekly",
+      "name": "bq_nmv_weekly",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1080,
+        420
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-nmv_weekly",
+      "name": "agg_nmv_weekly",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1200,
+        420
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['nmv_mtd'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-nmv_mtd",
+      "name": "bq_nmv_mtd",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1340,
+        420
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-nmv_mtd",
+      "name": "agg_nmv_mtd",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1460,
+        420
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['nmv_pacing'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-nmv_pacing",
+      "name": "bq_nmv_pacing",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1600,
+        420
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-nmv_pacing",
+      "name": "agg_nmv_pacing",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1720,
+        420
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['data_freshness'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-data_freshness",
+      "name": "bq_data_freshness",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1860,
+        420
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-data_freshness",
+      "name": "agg_data_freshness",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1980,
+        420
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['act1'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-act1",
+      "name": "bq_act1",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        40,
+        660
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-act1",
+      "name": "agg_act1",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        160,
+        660
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['act2'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-act2",
+      "name": "bq_act2",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        300,
+        660
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-act2",
+      "name": "agg_act2",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        420,
+        660
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['act_source'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-act_source",
+      "name": "bq_act_source",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        560,
+        660
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-act_source",
+      "name": "agg_act_source",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        680,
+        660
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['act_new_days'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-act_new_days",
+      "name": "bq_act_new_days",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        820,
+        660
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-act_new_days",
+      "name": "agg_act_new_days",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        940,
+        660
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['churn'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-churn",
+      "name": "bq_churn",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1080,
+        660
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-churn",
+      "name": "agg_churn",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1200,
+        660
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['churn_comp'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-churn_comp",
+      "name": "bq_churn_comp",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1340,
+        660
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-churn_comp",
+      "name": "agg_churn_comp",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1460,
+        660
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['churn_mtd'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-churn_mtd",
+      "name": "bq_churn_mtd",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1600,
+        660
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-churn_mtd",
+      "name": "agg_churn_mtd",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1720,
+        660
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['earnings_buckets'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-earnings_buckets",
+      "name": "bq_earnings_buckets",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1860,
+        660
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-earnings_buckets",
+      "name": "agg_earnings_buckets",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1980,
+        660
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['retention_by_segment'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-retention_by_segment",
+      "name": "bq_retention_by_segment",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        40,
+        900
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-retention_by_segment",
+      "name": "agg_retention_by_segment",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        160,
+        900
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['retention_cohort_curve'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-retention_cohort_curve",
+      "name": "bq_retention_cohort_curve",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        300,
+        900
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-retention_cohort_curve",
+      "name": "agg_retention_cohort_curve",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        420,
+        900
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['link_gen_monthly'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-link_gen_monthly",
+      "name": "bq_link_gen_monthly",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        560,
+        900
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-link_gen_monthly",
+      "name": "agg_link_gen_monthly",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        680,
+        900
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['link_gen_daily'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-link_gen_daily",
+      "name": "bq_link_gen_daily",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        820,
+        900
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-link_gen_daily",
+      "name": "agg_link_gen_daily",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        940,
+        900
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['link_gen_mtd_comp'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-link_gen_mtd_comp",
+      "name": "bq_link_gen_mtd_comp",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1080,
+        900
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-link_gen_mtd_comp",
+      "name": "agg_link_gen_mtd_comp",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1200,
+        900
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['link_gen_by_segment'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-link_gen_by_segment",
+      "name": "bq_link_gen_by_segment",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1340,
+        900
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-link_gen_by_segment",
+      "name": "agg_link_gen_by_segment",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1460,
+        900
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['link_gen_earnings_by_status'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-link_gen_earnings_by_status",
+      "name": "bq_link_gen_earnings_by_status",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1600,
+        900
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-link_gen_earnings_by_status",
+      "name": "agg_link_gen_earnings_by_status",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1720,
+        900
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meli-bi-data"
+        },
+        "sqlQuery": "={{ $('Fechas + SQL').first().json.sql['mkt_context'] }}",
+        "options": {
+          "defaultDataset": "",
+          "useLegacySql": false
+        }
+      },
+      "id": "n-bq-mkt_context",
+      "name": "bq_mkt_context",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "position": [
+        1860,
+        900
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "n-ag-mkt_context",
+      "name": "agg_mkt_context",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1980,
+        900
+      ],
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Reconstruye el mismo objeto que bq_refresh.ps1 inyecta en window.__PRELOADED__.\nconst KEYS = [\"behaviour\", \"beh_mtd\", \"beh_pacing\", \"qr_rolling\", \"registrations\", \"reg_mtd\", \"reg_pacing\", \"landing_traffic\", \"landing_pacing\", \"spend_pom\", \"nmv_monthly\", \"nmv_lt_by_status\", \"nmv_weekly\", \"nmv_mtd\", \"nmv_pacing\", \"data_freshness\", \"act1\", \"act2\", \"act_source\", \"act_new_days\", \"churn\", \"churn_comp\", \"churn_mtd\", \"earnings_buckets\", \"retention_by_segment\", \"retention_cohort_curve\", \"link_gen_monthly\", \"link_gen_daily\", \"link_gen_mtd_comp\", \"link_gen_by_segment\", \"link_gen_earnings_by_status\", \"mkt_context\"];\n\nconst data = {};\nconst vacias = [];\nfor (const k of KEYS) {\n  let rows = [];\n  try { rows = $('agg_' + k).first().json.data || []; } catch (e) { rows = []; }\n  data[k] = rows;\n  if (!rows.length) vacias.push(k);\n}\n\n// Mismo guard que el script de PowerShell: si fallo la mitad o mas, NO publicar.\n// Sin esto, un token vencido pisa el snapshot bueno con 32 arrays vacios.\nif (vacias.length >= KEYS.length / 2) {\n  throw new Error('ABORTADO: ' + vacias.length + '/' + KEYS.length +\n                  ' queries vacias. No se publica. Vacias: ' + vacias.join(', '));\n}\n\nconst now = new Date();\nconst snapshot = {\n  savedAt: now.toISOString(),\n  savedAtDisplay: now.toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' }),\n  data,\n};\n\nreturn [{ json: { snapshotJson: JSON.stringify(snapshot), vacias, filas:\n  Object.fromEntries(KEYS.map(k => [k, data[k].length])) } }];\n"
+      },
+      "id": "n-snap",
+      "name": "Armar snapshot",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        40,
+        1200
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "https://grid.melioffice.com/d/01KRE46H4452DPPVSYM5BKXJ14?dl=1",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "html"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "n-get",
+      "name": "Bajar HTML de Grid",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        300,
+        1200
+      ],
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_ID_TOKEN_GRID",
+          "name": "Grid API token (Bearer grid_sk_...)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Mismo reemplazo que hace bq_refresh.ps1 sobre el HTML.\nconst html = $json.html;\nconst snapshotJson = $('Armar snapshot').first().json.snapshotJson;\n\nif (!html || html.length < 100000) {\n  throw new Error('El HTML bajado de Grid parece incompleto: ' + (html ? html.length : 0) + ' bytes');\n}\n\nconst tag = '<script>window.__PRELOADED__ = ' + snapshotJson + ';</script>';\nconst re  = /<script>window\\.__PRELOADED__[^<]*<\\/script>|<!-- PRELOADED_SNAPSHOT_HERE -->/;\nif (!re.test(html)) throw new Error('No se encontro el tag __PRELOADED__ en el HTML');\nconst out = html.replace(re, () => tag);\n\nconst buf = Buffer.from(out, 'utf8');\nreturn [{\n  json: { kb: Math.round(buf.length / 1024) },\n  binary: { file: { data: buf.toString('base64'), mimeType: 'text/html',\n                    fileName: 'affiliates-dashboard-grid.html' } },\n}];\n"
+      },
+      "id": "n-inject",
+      "name": "Inyectar snapshot",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        560,
+        1200
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://grid.melioffice.com/api/v1/engine/run",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "config",
+              "value": "{\"skill_version\": \"3.6.8\", \"doc_id\": \"01KRE46H4452DPPVSYM5BKXJ14\"}"
+            },
+            {
+              "name": "file",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "n-put",
+      "name": "Subir a Grid",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        820,
+        1200
+      ],
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_ID_TOKEN_GRID",
+          "name": "Grid API token (Bearer grid_sk_...)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "lola.corales@mercadolibre.com",
+        "subject": "=Affiliates dashboard actualizado ({{ $('Inyectar snapshot').first().json.kb }} KB)",
+        "message": "={{ $json.ok ? 'Dashboard actualizado OK' : 'REVISAR: Grid respondio ok=false' }}\n{{ $json.view_url || 'https://grid.adminml.com/d/01KRE46H4452DPPVSYM5BKXJ14/view' }}\n\nFilas por query:\n{{ JSON.stringify($('Armar snapshot').first().json.filas, null, 1) }}\n\nQueries vacias: {{ ($('Armar snapshot').first().json.vacias || []).join(', ') || 'ninguna' }}",
+        "options": {}
+      },
+      "id": "n-mail",
+      "name": "Aviso",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        1080,
+        1200
+      ],
+      "typeVersion": 2.2,
+      "credentials": {
+        "googleGenericOAuth2Api": {
+          "id": "REEMPLAZAR_ID_CREDENCIAL",
+          "name": "Credenciales Lola Corales"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fechas + SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fechas + SQL": {
+      "main": [
+        [
+          {
+            "node": "bq_behaviour",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_behaviour": {
+      "main": [
+        [
+          {
+            "node": "agg_behaviour",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_behaviour": {
+      "main": [
+        [
+          {
+            "node": "bq_beh_mtd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_beh_mtd": {
+      "main": [
+        [
+          {
+            "node": "agg_beh_mtd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_beh_mtd": {
+      "main": [
+        [
+          {
+            "node": "bq_beh_pacing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_beh_pacing": {
+      "main": [
+        [
+          {
+            "node": "agg_beh_pacing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_beh_pacing": {
+      "main": [
+        [
+          {
+            "node": "bq_qr_rolling",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_qr_rolling": {
+      "main": [
+        [
+          {
+            "node": "agg_qr_rolling",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_qr_rolling": {
+      "main": [
+        [
+          {
+            "node": "bq_registrations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_registrations": {
+      "main": [
+        [
+          {
+            "node": "agg_registrations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_registrations": {
+      "main": [
+        [
+          {
+            "node": "bq_reg_mtd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_reg_mtd": {
+      "main": [
+        [
+          {
+            "node": "agg_reg_mtd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_reg_mtd": {
+      "main": [
+        [
+          {
+            "node": "bq_reg_pacing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_reg_pacing": {
+      "main": [
+        [
+          {
+            "node": "agg_reg_pacing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_reg_pacing": {
+      "main": [
+        [
+          {
+            "node": "bq_landing_traffic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_landing_traffic": {
+      "main": [
+        [
+          {
+            "node": "agg_landing_traffic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_landing_traffic": {
+      "main": [
+        [
+          {
+            "node": "bq_landing_pacing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_landing_pacing": {
+      "main": [
+        [
+          {
+            "node": "agg_landing_pacing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_landing_pacing": {
+      "main": [
+        [
+          {
+            "node": "bq_spend_pom",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_spend_pom": {
+      "main": [
+        [
+          {
+            "node": "agg_spend_pom",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_spend_pom": {
+      "main": [
+        [
+          {
+            "node": "bq_nmv_monthly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_nmv_monthly": {
+      "main": [
+        [
+          {
+            "node": "agg_nmv_monthly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_nmv_monthly": {
+      "main": [
+        [
+          {
+            "node": "bq_nmv_lt_by_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_nmv_lt_by_status": {
+      "main": [
+        [
+          {
+            "node": "agg_nmv_lt_by_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_nmv_lt_by_status": {
+      "main": [
+        [
+          {
+            "node": "bq_nmv_weekly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_nmv_weekly": {
+      "main": [
+        [
+          {
+            "node": "agg_nmv_weekly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_nmv_weekly": {
+      "main": [
+        [
+          {
+            "node": "bq_nmv_mtd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_nmv_mtd": {
+      "main": [
+        [
+          {
+            "node": "agg_nmv_mtd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_nmv_mtd": {
+      "main": [
+        [
+          {
+            "node": "bq_nmv_pacing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_nmv_pacing": {
+      "main": [
+        [
+          {
+            "node": "agg_nmv_pacing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_nmv_pacing": {
+      "main": [
+        [
+          {
+            "node": "bq_data_freshness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_data_freshness": {
+      "main": [
+        [
+          {
+            "node": "agg_data_freshness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_data_freshness": {
+      "main": [
+        [
+          {
+            "node": "bq_act1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_act1": {
+      "main": [
+        [
+          {
+            "node": "agg_act1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_act1": {
+      "main": [
+        [
+          {
+            "node": "bq_act2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_act2": {
+      "main": [
+        [
+          {
+            "node": "agg_act2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_act2": {
+      "main": [
+        [
+          {
+            "node": "bq_act_source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_act_source": {
+      "main": [
+        [
+          {
+            "node": "agg_act_source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_act_source": {
+      "main": [
+        [
+          {
+            "node": "bq_act_new_days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_act_new_days": {
+      "main": [
+        [
+          {
+            "node": "agg_act_new_days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_act_new_days": {
+      "main": [
+        [
+          {
+            "node": "bq_churn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_churn": {
+      "main": [
+        [
+          {
+            "node": "agg_churn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_churn": {
+      "main": [
+        [
+          {
+            "node": "bq_churn_comp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_churn_comp": {
+      "main": [
+        [
+          {
+            "node": "agg_churn_comp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_churn_comp": {
+      "main": [
+        [
+          {
+            "node": "bq_churn_mtd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_churn_mtd": {
+      "main": [
+        [
+          {
+            "node": "agg_churn_mtd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_churn_mtd": {
+      "main": [
+        [
+          {
+            "node": "bq_earnings_buckets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_earnings_buckets": {
+      "main": [
+        [
+          {
+            "node": "agg_earnings_buckets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_earnings_buckets": {
+      "main": [
+        [
+          {
+            "node": "bq_retention_by_segment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_retention_by_segment": {
+      "main": [
+        [
+          {
+            "node": "agg_retention_by_segment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_retention_by_segment": {
+      "main": [
+        [
+          {
+            "node": "bq_retention_cohort_curve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_retention_cohort_curve": {
+      "main": [
+        [
+          {
+            "node": "agg_retention_cohort_curve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_retention_cohort_curve": {
+      "main": [
+        [
+          {
+            "node": "bq_link_gen_monthly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_link_gen_monthly": {
+      "main": [
+        [
+          {
+            "node": "agg_link_gen_monthly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_link_gen_monthly": {
+      "main": [
+        [
+          {
+            "node": "bq_link_gen_daily",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_link_gen_daily": {
+      "main": [
+        [
+          {
+            "node": "agg_link_gen_daily",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_link_gen_daily": {
+      "main": [
+        [
+          {
+            "node": "bq_link_gen_mtd_comp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_link_gen_mtd_comp": {
+      "main": [
+        [
+          {
+            "node": "agg_link_gen_mtd_comp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_link_gen_mtd_comp": {
+      "main": [
+        [
+          {
+            "node": "bq_link_gen_by_segment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_link_gen_by_segment": {
+      "main": [
+        [
+          {
+            "node": "agg_link_gen_by_segment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_link_gen_by_segment": {
+      "main": [
+        [
+          {
+            "node": "bq_link_gen_earnings_by_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_link_gen_earnings_by_status": {
+      "main": [
+        [
+          {
+            "node": "agg_link_gen_earnings_by_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_link_gen_earnings_by_status": {
+      "main": [
+        [
+          {
+            "node": "bq_mkt_context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bq_mkt_context": {
+      "main": [
+        [
+          {
+            "node": "agg_mkt_context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "agg_mkt_context": {
+      "main": [
+        [
+          {
+            "node": "Armar snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar snapshot": {
+      "main": [
+        [
+          {
+            "node": "Bajar HTML de Grid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bajar HTML de Grid": {
+      "main": [
+        [
+          {
+            "node": "Inyectar snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inyectar snapshot": {
+      "main": [
+        [
+          {
+            "node": "Subir a Grid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subir a Grid": {
+      "main": [
+        [
+          {
+            "node": "Aviso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "availableInMCP": false
+  },
+  "tags": []
+}

@@ -248,6 +248,12 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .mom-tip{color:var(--muted);font-weight:400;cursor:help;font-size:11px}
 .early-month-warning{background:#FFFBEB;border-bottom:1px solid #FDE68A;color:#92400E;
   font-size:12.5px;text-align:center;padding:8px 16px}
+/* Aviso de frescura: un dashboard congelado se ve identico a uno al dia, asi que
+   sin este cartel un refresh caido pasa inadvertido. Ambar = sospechoso,
+   rojo = no tomar decisiones sin verificar. */
+.stale-warning{background:#FFFBEB;border-bottom:1px solid #FDE68A;color:#92400E;
+  font-size:12.5px;text-align:center;padding:8px 16px;font-weight:600}
+.stale-warning.sev{background:#FEF2F2;border-bottom-color:#FECACA;color:#991B1B}
 
 /* Árbol horizontal (izq→der): las cajas crecen en ancho, no en alto — ramas hermanas
    se apilan solo dentro de su propio grupo, sin empujar el resto del árbol hacia abajo.
@@ -297,6 +303,49 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
     const el = document.getElementById('early-month-warning');
     if (el && new Date().getDate() <= 2) el.style.display = '';
   })();
+</script>
+
+<div id="stale-warning" class="stale-warning" style="display:none"></div>
+<script>
+  // Umbrales en dias desde el ultimo refresh del snapshot.
+  //   < AVISO      -> nada (cadencia normal)
+  //   AVISO..GRAVE -> ambar: probablemente fallo una corrida
+  //   >= GRAVE     -> rojo: ya no sirve para decidir
+  window.STALE_DIAS_AVISO = 3;
+  window.STALE_DIAS_GRAVE = 7;
+
+  window.checkStaleData = function () {
+    const el = document.getElementById('stale-warning');
+    if (!el) return;
+    const saved = window.__PRELOADED__ && window.__PRELOADED__.savedAt;
+    if (!saved) { el.style.display = 'none'; return; }
+
+    const ts = new Date(saved);
+    if (isNaN(ts)) { el.style.display = 'none'; return; }
+
+    // Dias calendario completos, no fracciones: un snapshot de ayer a la noche
+    // no deberia contar como "1 dia" apenas pasa la medianoche.
+    const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+    const d1 = new Date(ts); d1.setHours(0, 0, 0, 0);
+    const dias = Math.round((d0 - d1) / 86400000);
+    if (dias < window.STALE_DIAS_AVISO) { el.style.display = 'none'; return; }
+
+    const fecha = ts.toLocaleString('es-AR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+      timeZone: 'America/Argentina/Buenos_Aires',
+    });
+    const grave = dias >= window.STALE_DIAS_GRAVE;
+    el.className = 'stale-warning' + (grave ? ' sev' : '');
+    el.textContent = grave
+      ? '🔴 DATOS DESACTUALIZADOS: hace ' + dias + ' dias que no se refrescan (ultimo: ' + fecha +
+        '). No tomes decisiones con estos numeros sin verificar que el refresh este corriendo.'
+      : '⚠️ Los datos tienen ' + dias + ' dias - ultimo refresh: ' + fecha +
+        '. Puede que el refresh automatico haya fallado.';
+    el.style.display = '';
+  };
+
+  checkStaleData();
 </script>
 
 <nav class="site-nav">
@@ -6400,6 +6449,12 @@ async function autoLoadFromGAS() {
     badge.style.color = '#4ADE80';
     document.getElementById('last-refresh').textContent = `Actualizado: ${refreshTime}`;
     document.getElementById('last-refresh').style.display = 'inline';
+
+    // Si entraron datos frescos por esta via, el cartel de frescura tiene que bajarse.
+    if (data.meta?.refreshedAt && window.__PRELOADED__) {
+      window.__PRELOADED__.savedAt = data.meta.refreshedAt;
+    }
+    if (typeof checkStaleData === 'function') checkStaleData();
 
     // ── Persistir snapshot para próximas cargas ──
     saveSnapshot(data);
