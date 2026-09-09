@@ -281,6 +281,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .mtree-children > .mtree-node::before{content:'';position:absolute;left:-18px;top:50%;
   width:18px;height:2px;background:#D1D5DB;transform:translateY(-1px)}
 </style>
+<script src="/d/_assets/grid-sdk.js"></script>
 </head>
 <body>
 
@@ -6587,10 +6588,60 @@ async function loadSnapshot() {
   }
 }
 
+// ── Snapshot en vivo desde Google Sheets ────────────────────────────────────
+// Verdi Flows escribe el snapshot completo, serializado y partido en celdas, en
+// una sola tab. Va por Sheets y no por HTTP porque el nodo HTTP Request de Verdi
+// solo acepta dominios melisystems, body JSON (nada de multipart) y requiere que
+// los duenos de la API aprueben el acceso. Los nodos de Google no tienen nada de
+// eso, y es el mismo transporte que ya usan otros dashboards del equipo.
+//
+// Va el JSON serializado y no tablas por columna a proposito: asi los null siguen
+// siendo null y los numeros numeros. Sheets devuelve todo como texto, y con tablas
+// un null se volveria "" y despues 0 en cualquier cuenta.
+const V2_SHEET_ID  = '14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc';
+const V2_SHEET_TAB = 'snapshot';
+const V2_DOC_ID    = '01M238APRQRGDTJDY0JV1MAN03';
+const V2_SENTINELA = '~';  // sin esto, un chunk que arranque con = o + lo toma como formula
+
+async function cargarSnapshotDeSheets() {
+  if (!V2_SHEET_ID || !window.Grid || !Grid.sheets) return false;
+  try {
+    Grid.configure({ docId: V2_DOC_ID });
+    const res = await Grid.sheets.get(V2_SHEET_ID, V2_SHEET_TAB + '!A:A');
+    const chunks = (res?.values || []).map(f => f && f[0]).filter(Boolean);
+    if (!chunks.length) { console.warn('[v2] la tab del snapshot esta vacia'); return false; }
+
+    const json = chunks.map(s => s.startsWith(V2_SENTINELA) ? s.slice(1) : s).join('');
+    const snap = JSON.parse(json);
+    if (!snap || !snap.data || !snap.savedAt) throw new Error('snapshot sin data/savedAt');
+
+    // Solo pisamos el embebido si el de Sheets es mas nuevo. Si Verdi fallo y el
+    // Sheet quedo viejo, es mejor quedarse con el que vino en el HTML.
+    const tsSheet = new Date(snap.savedAt);
+    const tsEmbed = new Date(window.__PRELOADED__?.savedAt || 0);
+    if (isNaN(tsSheet) || tsSheet < tsEmbed) {
+      console.warn('[v2] el snapshot de Sheets es mas viejo que el embebido; se ignora');
+      return false;
+    }
+
+    window.__PRELOADED__ = snap;
+    console.log('[v2] snapshot desde Sheets:', Math.round(json.length/1024), 'KB ·',
+                chunks.length, 'celdas ·', snap.savedAt);
+    return true;
+  } catch (e) {
+    console.warn('[v2] no se pudo leer el snapshot de Sheets, se usa el embebido:', e.message);
+    return false;
+  }
+}
+
 // ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
 (async () => {
+  // 0. Datos frescos desde Sheets (si andan, reemplazan al embebido)
+  await cargarSnapshotDeSheets();
+  if (typeof checkStaleData === 'function') checkStaleData();
+
   // 1. Datos pre-embedidos (versión exportada para Grid) — prioridad máxima
   if (window.__PRELOADED__) {
     try {
