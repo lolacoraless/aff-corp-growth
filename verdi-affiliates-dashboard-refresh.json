@@ -1609,7 +1609,7 @@
           "parameters": [
             {
               "name": "config",
-              "value": "{\"skill_version\": \"3.6.8\", \"doc_id\": \"01KRE46H4452DPPVSYM5BKXJ14\"}"
+              "value": "{\"skill_version\": \"3.6.10\", \"doc_id\": \"01KRE46H4452DPPVSYM5BKXJ14\"}"
             },
             {
               "name": "file",
