@@ -280,6 +280,38 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
   width:0;border-left:2px solid #D1D5DB}
 .mtree-children > .mtree-node::before{content:'';position:absolute;left:-18px;top:50%;
   width:18px;height:2px;background:#D1D5DB;transform:translateY(-1px)}
+
+/* Panel lateral "Como funciona": explica de donde salen los datos sin ocupar
+   espacio del dashboard. Cerrado por defecto. */
+.info-tab{position:fixed;right:0;top:50%;transform:translateY(-50%) translateX(0);
+  background:var(--dark);color:#fff;border:none;border-radius:8px 0 0 8px;cursor:pointer;
+  padding:14px 8px;font-size:11px;font-weight:700;letter-spacing:.5px;z-index:300;
+  writing-mode:vertical-rl;font-family:var(--font);box-shadow:-2px 0 8px rgba(0,0,0,.2)}
+.info-tab:hover{background:#2A2C4A}
+.info-panel{position:fixed;right:0;top:0;height:100vh;width:380px;max-width:92vw;
+  background:var(--card);border-left:1px solid var(--border);z-index:301;
+  box-shadow:-4px 0 20px rgba(0,0,0,.15);transform:translateX(100%);
+  transition:transform .25s ease;overflow-y:auto;font-size:12.5px;line-height:1.55}
+.info-panel.abierto{transform:translateX(0)}
+.info-panel h3{background:var(--dark);color:#fff;margin:0;padding:14px 18px;font-size:13px;
+  display:flex;justify-content:space-between;align-items:center;position:sticky;top:0}
+.info-panel h3 button{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;
+  line-height:1;padding:0 4px}
+.info-body{padding:16px 18px 32px}
+.info-body h4{margin:18px 0 6px;font-size:12px;color:var(--dark);text-transform:uppercase;
+  letter-spacing:.4px}
+.info-body h4:first-child{margin-top:0}
+.info-body p{margin:0 0 10px;color:var(--text)}
+.info-body code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:11.5px}
+.info-flow{background:var(--bg);border-radius:8px;padding:12px 14px;margin:10px 0;
+  font-size:11.5px;line-height:1.9;color:var(--dkgray)}
+.info-flow b{color:var(--dark)}
+.info-link{display:block;padding:9px 12px;margin:6px 0;background:var(--bg);border-radius:8px;
+  color:var(--blue);text-decoration:none;font-weight:600;border:1px solid var(--border)}
+.info-link:hover{background:#EAF2FE;border-color:var(--blue)}
+.info-link span{display:block;color:var(--muted);font-weight:400;font-size:11px;margin-top:2px}
+.info-nota{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:8px;
+  padding:10px 12px;margin-top:14px;font-size:11.5px}
 </style>
 <script src="/d/_assets/grid-sdk.js"></script>
 </head>
@@ -348,6 +380,52 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 
   checkStaleData();
 </script>
+
+
+<button class="info-tab" onclick="document.getElementById('info-panel').classList.add('abierto')">CÓMO FUNCIONA</button>
+<aside id="info-panel" class="info-panel">
+  <h3>Cómo se actualiza este dashboard
+    <button onclick="document.getElementById('info-panel').classList.remove('abierto')" title="Cerrar">&times;</button>
+  </h3>
+  <div class="info-body">
+    <p>Los datos se refrescan solos, sin que nadie tenga que correr nada a mano.</p>
+
+    <div class="info-flow">
+      <b>BigQuery</b> — 10 queries agrupadas por familia<br>
+      ↓<br>
+      <b>Verdi Flows</b> — corre a las <b>10:00, 12:00 y 14:00</b><br>
+      ↓<br>
+      <b>Google Sheet</b> — una tab por familia<br>
+      ↓<br>
+      <b>Este dashboard</b> — lee el Sheet al abrirse
+    </div>
+
+    <h4>Links</h4>
+    <a class="info-link" href="https://web.furycloud.io/ai/verdi-flows/home/workflows" target="_blank" rel="noopener">
+      Verdi Flow
+      <span>Dashboard Afiliados v2 · refresh diario</span>
+    </a>
+    <a class="info-link" href="https://docs.google.com/spreadsheets/d/14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc/edit" target="_blank" rel="noopener">
+      Google Sheet
+      <span>Los datos que alimentan este dashboard</span>
+    </a>
+    <a class="info-link" href="https://grid.adminml.com/d/01KRE46H4452DPPVSYM5BKXJ14/view" target="_blank" rel="noopener">
+      Dashboard original
+      <span>Se refresca por PowerShell · queda como respaldo</span>
+    </a>
+
+    <h4>Si algo falla</h4>
+    <p>El dashboard solo usa el Sheet si está <b>completo y más fresco</b> que los datos que trae embebidos. Si una corrida se cortó por la mitad o quedó vieja, muestra los últimos datos buenos en vez de datos a medias.</p>
+    <p>Arriba de todo aparece un aviso cuando los datos tienen más de 3 días.</p>
+
+    <h4>Detalle técnico</h4>
+    <p>Cada fila viaja como JSON serializado (<code>TO_JSON_STRING</code>), no como columnas sueltas. Así los valores vacíos siguen siendo vacíos y no se convierten en cero al pasar por Sheets.</p>
+
+    <div class="info-nota">
+      Si cambia una query hay que tocarla en el Verdi Flow, no acá. El dashboard solo dibuja lo que encuentra en el Sheet.
+    </div>
+  </div>
+</aside>
 
 <nav class="site-nav">
   <div class="site-tab active" data-site="OVERVIEW" onclick="switchSite('OVERVIEW',this)" style="color:#2563EB;font-weight:700">📊 Overview</div>
