@@ -6599,29 +6599,31 @@ async function loadSnapshot() {
 // Google no tienen ninguna de esas restricciones.
 const V2_SHEET_ID = '14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc';
 const V2_DOC_ID   = '01M238APRQRGDTJDY0JV1MAN03';
-const V2_TABS     = ["behaviour", "beh_mtd", "beh_pacing", "qr_rolling", "registrations", "reg_mtd", "reg_pacing", "landing_traffic", "landing_pacing", "spend_pom", "nmv_monthly", "nmv_lt_by_status", "nmv_weekly", "nmv_mtd", "nmv_pacing", "data_freshness", "act1", "act2", "act_source", "act_new_days", "churn", "churn_comp", "churn_mtd", "earnings_buckets", "retention_by_segment", "retention_cohort_curve", "link_gen_monthly", "link_gen_daily", "link_gen_mtd_comp", "link_gen_by_segment", "link_gen_earnings_by_status", "mkt_context"];
-const V2_TAB_META = '__meta__';
+const V2_GRUPOS   = {"g_behaviour": ["behaviour", "beh_mtd", "beh_pacing", "qr_rolling"], "g_registros": ["registrations", "reg_mtd", "reg_pacing"], "g_landing": ["landing_traffic", "landing_pacing"], "g_nmv": ["nmv_monthly", "nmv_weekly", "nmv_mtd", "nmv_pacing", "nmv_lt_by_status"], "g_activacion": ["act1", "act2", "act_source", "act_new_days"], "g_churn": ["churn", "churn_comp", "churn_mtd", "earnings_buckets"], "g_retencion": ["retention_by_segment", "retention_cohort_curve"], "g_varios": ["spend_pom", "data_freshness", "mkt_context"], "g_linkgen": ["link_gen_monthly", "link_gen_daily", "link_gen_mtd_comp", "link_gen_by_segment", "link_gen_earnings_by_status"]};
+const V2_CLAVES   = ["behaviour", "beh_mtd", "beh_pacing", "qr_rolling", "registrations", "reg_mtd", "reg_pacing", "landing_traffic", "landing_pacing", "nmv_monthly", "nmv_weekly", "nmv_mtd", "nmv_pacing", "nmv_lt_by_status", "act1", "act2", "act_source", "act_new_days", "churn", "churn_comp", "churn_mtd", "earnings_buckets", "retention_by_segment", "retention_cohort_curve", "spend_pom", "data_freshness", "mkt_context", "link_gen_monthly", "link_gen_daily", "link_gen_mtd_comp", "link_gen_by_segment", "link_gen_earnings_by_status"];
+const V2_TAB_META = 'g_meta';
 
 async function cargarSnapshotDeSheets() {
   if (!V2_SHEET_ID || !window.Grid || !Grid.sheets) return false;
   try {
     Grid.configure({ docId: V2_DOC_ID });
 
-    // batch acepta 50 operaciones: las 33 tabs entran en un solo request
-    const tabs = V2_TABS.concat([V2_TAB_META]);
-    const res  = await Grid.sheets.batch(V2_SHEET_ID, tabs.map(t => ({ op: 'get', range: t + '!A:A' })));
+    // Las queries van agrupadas por familia: 10 tabs en vez de 33. Cada tab trae
+    // dos columnas, _q (que query es esa fila) y r (la fila serializada).
+    const tabs = Object.keys(V2_GRUPOS).concat([V2_TAB_META]);
+    const res  = await Grid.sheets.batch(V2_SHEET_ID, tabs.map(t => ({ op: 'get', range: t + '!A:B' })));
 
     const filas = t => {
       const v = (res[tabs.indexOf(t)] || {}).values || [];
       // la primera fila es el header que escribe el nodo de Sheets
-      return v.slice(1).map(f => f && f[0]).filter(Boolean);
+      return v.slice(1).filter(f => f && f[1]);
     };
 
     // __meta__ lo escribe Verdi al final de todo: si no esta, la corrida se corto
     // a la mitad y el Sheet tiene datos de mas de una fecha mezclados.
     const meta = filas(V2_TAB_META);
-    if (!meta.length) { console.warn('[v2] falta __meta__: la corrida quedo incompleta'); return false; }
-    const info = JSON.parse(meta[0]);
+    if (!meta.length) { console.warn('[v2] falta g_meta: la corrida quedo incompleta'); return false; }
+    const info = JSON.parse(meta[0][1]);
 
     // BigQuery serializa los NUMERIC como string para no perder precision, asi que
     // nmv_aff llegaria como "285396578.762909229" en vez de numero. El pipeline de
@@ -6641,14 +6643,17 @@ async function cargarSnapshotDeSheets() {
     };
 
     const data = {};
-    const vacias = [];
-    for (const t of V2_TABS) {
-      const fs = filas(t);
-      if (!fs.length) { vacias.push(t); data[t] = []; continue; }
-      data[t] = fs.map(s => aNumero(JSON.parse(s)));
+    for (const k of V2_CLAVES) data[k] = [];
+    for (const tab of Object.keys(V2_GRUPOS)) {
+      for (const f of filas(tab)) {
+        const q = f[0];
+        if (data[q] === undefined) continue;  // clave que ya no usamos
+        data[q].push(aNumero(JSON.parse(f[1])));
+      }
     }
+    const vacias = V2_CLAVES.filter(k => !data[k].length);
     if (vacias.length) {
-      console.warn('[v2] tabs vacias, se usa el snapshot embebido:', vacias.join(', '));
+      console.warn('[v2] queries sin filas, se usa el snapshot embebido:', vacias.join(', '));
       return false;
     }
 
@@ -6662,8 +6667,9 @@ async function cargarSnapshotDeSheets() {
     }
 
     window.__PRELOADED__ = { savedAt: info.savedAt, savedAtDisplay: info.savedAtDisplay, data };
-    const n = V2_TABS.reduce((a, t) => a + data[t].length, 0);
-    console.log('[v2] snapshot desde Sheets:', V2_TABS.length, 'tabs ·', n, 'filas ·', info.savedAt);
+    const n = V2_CLAVES.reduce((a, k) => a + data[k].length, 0);
+    console.log('[v2] snapshot desde Sheets:', tabs.length, 'tabs ·', V2_CLAVES.length,
+                'queries ·', n, 'filas ·', info.savedAt);
     return true;
   } catch (e) {
     console.warn('[v2] no se pudo leer el snapshot de Sheets, se usa el embebido:', e.message);
