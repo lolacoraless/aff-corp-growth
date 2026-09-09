@@ -1,0 +1,30 @@
+SELECT TO_JSON_STRING(t) AS r
+FROM (
+WITH register AS (
+  SELECT USER_ID, SITE_ID,
+    DATE(TIMESTAMP_SUB(TIMESTAMP(DATE_REGISTER), INTERVAL 4 HOUR)) AS date_reg_adj
+  FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.AFFILIATE_AFFILIATE`
+  WHERE DATE_REGISTER >= DATE '2025-01-01' AND SITE_ID IN ('MLB','MLM','MLC','MLA')
+),
+first_sale AS (
+  SELECT SIT_SITE_ID, AFFILIATE_ID,
+    DATE_TRUNC(MIN(ORD_CREATED_DT), MONTH) AS mes_primera_venta,
+    MIN(ORD_CREATED_DT) AS first_sale_dt
+  FROM `meli-bi-data.WHOWNER.BT_AFFI_SALES_ATTRIBUTION_DAILY`
+  WHERE SIT_SITE_ID IN ('MLB','MLM','MLC','MLA') AND ORD_STATUS='paid'
+    AND SIT_SITE_ID=AFFILIATE_SIT_SITE_ID AND ORD_CREATED_DT >= DATE '2025-01-01'
+    AND ((ORD_CREATED_DT >= DATE '2026-04-01' AND NMV_ENIGMA_TOTAL_AMT_LC>0)
+      OR (ORD_CREATED_DT < DATE '2026-04-01' AND NMV_TD7DCALIB_TOTAL_AMT_LC>0))
+  GROUP BY 1, 2
+)
+SELECT r.SITE_ID, f.mes_primera_venta AS mes,
+  COUNT(DISTINCT r.USER_ID) AS total_new,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) = 0)     / COUNT(*) * 100, 1) AS pct_d0,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) BETWEEN 1  AND 7)  / COUNT(*) * 100, 1) AS pct_d1_7,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) BETWEEN 8  AND 30) / COUNT(*) * 100, 1) AS pct_d8_30,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) BETWEEN 31 AND 60) / COUNT(*) * 100, 1) AS pct_d31_60,
+  ROUND(COUNTIF(DATE_DIFF(f.first_sale_dt, r.date_reg_adj, DAY) > 60)              / COUNT(*) * 100, 1) AS pct_d60p
+FROM register r
+INNER JOIN first_sale f ON r.USER_ID = f.AFFILIATE_ID AND r.SITE_ID = f.SIT_SITE_ID
+GROUP BY 1, 2 ORDER BY SITE_ID, mes
+) t

@@ -6589,44 +6589,81 @@ async function loadSnapshot() {
 }
 
 // ── Snapshot en vivo desde Google Sheets ────────────────────────────────────
-// Verdi Flows escribe el snapshot completo, serializado y partido en celdas, en
-// una sola tab. Va por Sheets y no por HTTP porque el nodo HTTP Request de Verdi
-// solo acepta dominios melisystems, body JSON (nada de multipart) y requiere que
-// los duenos de la API aprueben el acceso. Los nodos de Google no tienen nada de
-// eso, y es el mismo transporte que ya usan otros dashboards del equipo.
+// Verdi escribe una tab por query. Cada tab tiene una sola columna con la fila
+// serializada por TO_JSON_STRING, asi que al hacer JSON.parse recuperamos los
+// objetos con sus tipos: null sigue null y los numeros siguen numeros. Con tablas
+// por columna Sheets devuelve todo texto y un null terminaria valiendo 0.
 //
-// Va el JSON serializado y no tablas por columna a proposito: asi los null siguen
-// siendo null y los numeros numeros. Sheets devuelve todo como texto, y con tablas
-// un null se volveria "" y despues 0 en cualquier cuenta.
-const V2_SHEET_ID  = '14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc';
-const V2_SHEET_TAB = 'snapshot';
-const V2_DOC_ID    = '01M238APRQRGDTJDY0JV1MAN03';
-const V2_SENTINELA = '~';  // sin esto, un chunk que arranque con = o + lo toma como formula
+// Va por Sheets y no por HTTP porque el nodo HTTP Request de Verdi exige dominio
+// melisystems, body JSON y aprobacion de los duenos de la API. Los nodos de
+// Google no tienen ninguna de esas restricciones.
+const V2_SHEET_ID = '14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc';
+const V2_DOC_ID   = '01M238APRQRGDTJDY0JV1MAN03';
+const V2_TABS     = ["behaviour", "beh_mtd", "beh_pacing", "qr_rolling", "registrations", "reg_mtd", "reg_pacing", "landing_traffic", "landing_pacing", "spend_pom", "nmv_monthly", "nmv_lt_by_status", "nmv_weekly", "nmv_mtd", "nmv_pacing", "data_freshness", "act1", "act2", "act_source", "act_new_days", "churn", "churn_comp", "churn_mtd", "earnings_buckets", "retention_by_segment", "retention_cohort_curve", "link_gen_monthly", "link_gen_daily", "link_gen_mtd_comp", "link_gen_by_segment", "link_gen_earnings_by_status", "mkt_context"];
+const V2_TAB_META = '__meta__';
 
 async function cargarSnapshotDeSheets() {
   if (!V2_SHEET_ID || !window.Grid || !Grid.sheets) return false;
   try {
     Grid.configure({ docId: V2_DOC_ID });
-    const res = await Grid.sheets.get(V2_SHEET_ID, V2_SHEET_TAB + '!A:A');
-    const chunks = (res?.values || []).map(f => f && f[0]).filter(Boolean);
-    if (!chunks.length) { console.warn('[v2] la tab del snapshot esta vacia'); return false; }
 
-    const json = chunks.map(s => s.startsWith(V2_SENTINELA) ? s.slice(1) : s).join('');
-    const snap = JSON.parse(json);
-    if (!snap || !snap.data || !snap.savedAt) throw new Error('snapshot sin data/savedAt');
+    // batch acepta 50 operaciones: las 33 tabs entran en un solo request
+    const tabs = V2_TABS.concat([V2_TAB_META]);
+    const res  = await Grid.sheets.batch(V2_SHEET_ID, tabs.map(t => ({ op: 'get', range: t + '!A:A' })));
+
+    const filas = t => {
+      const v = (res[tabs.indexOf(t)] || {}).values || [];
+      // la primera fila es el header que escribe el nodo de Sheets
+      return v.slice(1).map(f => f && f[0]).filter(Boolean);
+    };
+
+    // __meta__ lo escribe Verdi al final de todo: si no esta, la corrida se corto
+    // a la mitad y el Sheet tiene datos de mas de una fecha mezclados.
+    const meta = filas(V2_TAB_META);
+    if (!meta.length) { console.warn('[v2] falta __meta__: la corrida quedo incompleta'); return false; }
+    const info = JSON.parse(meta[0]);
+
+    // BigQuery serializa los NUMERIC como string para no perder precision, asi que
+    // nmv_aff llegaria como "285396578.762909229" en vez de numero. El pipeline de
+    // PowerShell ya los convierte, y el dashboard cuenta con eso: probado, si los
+    // numeros llegan como string se rompen 24 de las claves de DATA.
+    // Verificado que hoy NO existe ningun campo string con valor numerico, asi que
+    // convertirlos todos reproduce exactamente los tipos actuales.
+    const aNumero = v => {
+      if (Array.isArray(v)) return v.map(aNumero);
+      if (v && typeof v === 'object') {
+        const o = {};
+        for (const k in v) o[k] = aNumero(v[k]);
+        return o;
+      }
+      if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+      return v;
+    };
+
+    const data = {};
+    const vacias = [];
+    for (const t of V2_TABS) {
+      const fs = filas(t);
+      if (!fs.length) { vacias.push(t); data[t] = []; continue; }
+      data[t] = fs.map(s => aNumero(JSON.parse(s)));
+    }
+    if (vacias.length) {
+      console.warn('[v2] tabs vacias, se usa el snapshot embebido:', vacias.join(', '));
+      return false;
+    }
 
     // Solo pisamos el embebido si el de Sheets es mas nuevo. Si Verdi fallo y el
     // Sheet quedo viejo, es mejor quedarse con el que vino en el HTML.
-    const tsSheet = new Date(snap.savedAt);
-    const tsEmbed = new Date(window.__PRELOADED__?.savedAt || 0);
+    const tsSheet = new Date(info.savedAt);
+    const tsEmbed = new Date((window.__PRELOADED__ || {}).savedAt || 0);
     if (isNaN(tsSheet) || tsSheet < tsEmbed) {
       console.warn('[v2] el snapshot de Sheets es mas viejo que el embebido; se ignora');
       return false;
     }
 
-    window.__PRELOADED__ = snap;
-    console.log('[v2] snapshot desde Sheets:', Math.round(json.length/1024), 'KB ·',
-                chunks.length, 'celdas ·', snap.savedAt);
+    window.__PRELOADED__ = { savedAt: info.savedAt, savedAtDisplay: info.savedAtDisplay, data };
+    const n = V2_TABS.reduce((a, t) => a + data[t].length, 0);
+    console.log('[v2] snapshot desde Sheets:', V2_TABS.length, 'tabs ·', n, 'filas ·', info.savedAt);
     return true;
   } catch (e) {
     console.warn('[v2] no se pudo leer el snapshot de Sheets, se usa el embebido:', e.message);
