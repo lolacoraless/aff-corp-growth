@@ -1333,19 +1333,15 @@
       "typeVersion": 1
     },
     {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "\nconst KEYS = [\"behaviour\", \"beh_mtd\", \"beh_pacing\", \"qr_rolling\", \"registrations\", \"reg_mtd\", \"reg_pacing\", \"landing_traffic\", \"landing_pacing\", \"spend_pom\", \"nmv_monthly\", \"nmv_lt_by_status\", \"nmv_weekly\", \"nmv_mtd\", \"nmv_pacing\", \"data_freshness\", \"act1\", \"act2\", \"act_source\", \"act_new_days\", \"churn\", \"churn_comp\", \"churn_mtd\", \"earnings_buckets\", \"retention_by_segment\", \"retention_cohort_curve\", \"link_gen_monthly\", \"link_gen_daily\", \"link_gen_mtd_comp\", \"link_gen_by_segment\", \"link_gen_earnings_by_status\", \"mkt_context\"];\nconst data = {}, vacias = [];\nfor (const k of KEYS) {\n  let rows = [];\n  try { rows = $('agg_' + k).first().json.data || []; } catch (e) { rows = []; }\n  data[k] = rows;\n  if (!rows.length) vacias.push(k);\n}\nif (vacias.length >= KEYS.length / 2) {\n  throw new Error('ABORTADO: ' + vacias.length + '/' + KEYS.length +\n                  ' queries vacias. No se escribe el Sheet. Vacias: ' + vacias.join(', '));\n}\nconst now = new Date();\nconst snapshotJson = JSON.stringify({\n  savedAt: now.toISOString(),\n  savedAtDisplay: now.toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' }),\n  data,\n});\nreturn [{ json: { snapshotJson, kb: Math.round(snapshotJson.length/1024), vacias,\n                  filas: Object.fromEntries(KEYS.map(k => [k, data[k].length])) } }];"
-      },
+      "parameters": {},
       "id": "n-snap",
       "name": "Armar snapshot",
-      "type": "n8n-nodes-base.code",
+      "type": "n8n-nodes-base.verdiCode",
       "position": [
         40,
         1200
       ],
-      "typeVersion": 2
+      "typeVersion": 1
     },
     {
       "parameters": {
@@ -1379,19 +1375,15 @@
       }
     },
     {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Una celda de Sheets aguanta 50.000 caracteres; cortamos en 40.000 por margen.\nconst CHUNK = 40000;\nconst SENTINELA = '~';  // un pedazo que arranque con = o + lo tomaria como formula\nconst json = $('Armar snapshot').first().json.snapshotJson;\nconst items = [];\nfor (let i = 0; i < json.length; i += CHUNK) {\n  items.push({ json: { snapshot: SENTINELA + json.slice(i, i + CHUNK) } });\n}\nif (!items.length) throw new Error('snapshot vacio, no hay nada para escribir');\nreturn items;"
-      },
+      "parameters": {},
       "id": "n-chunk",
       "name": "Chunkear",
-      "type": "n8n-nodes-base.code",
+      "type": "n8n-nodes-base.verdiCode",
       "position": [
         560,
         1200
       ],
-      "typeVersion": 2
+      "typeVersion": 1
     },
     {
       "parameters": {
