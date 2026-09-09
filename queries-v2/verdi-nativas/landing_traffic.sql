@@ -22,7 +22,7 @@ WITH base AS (
     uid, user_id
   FROM `meli-bi-data.SBOX_AFILIADOSCOREDATA.MKT_REGISTRATION_JOURNEY`
   WHERE page = 'landing'
-    AND ds >= '${D.HIST}'
+    AND ds >= DATE '2025-01-01'
     AND ( ds < '2026-04-01'
        OR path = '/splinter/landing'
        OR (path = '/sbc/site-merch/landing' AND ds >= '2026-08-01') )
@@ -42,15 +42,15 @@ SELECT 'month' AS grain,
 FROM diario GROUP BY 1,2,3,4
 UNION ALL
 SELECT 'week',
-  FORMAT_DATE('%Y-%m-%d', DATE_ADD(DATE '${D.W8}',
-      INTERVAL DIV(DATE_DIFF(ds, DATE '${D.W8}', DAY), 7) * 7 DAY)),
+  FORMAT_DATE('%Y-%m-%d', DATE_ADD(DATE_SUB(CURRENT_DATE('America/Argentina/Buenos_Aires'), INTERVAL MOD(EXTRACT(DAYOFWEEK FROM CURRENT_DATE('America/Argentina/Buenos_Aires')) + 5, 7) + 84 DAY),
+      INTERVAL DIV(DATE_DIFF(ds, DATE_SUB(CURRENT_DATE('America/Argentina/Buenos_Aires'), INTERVAL MOD(EXTRACT(DAYOFWEEK FROM CURRENT_DATE('America/Argentina/Buenos_Aires')) + 5, 7) + 84 DAY), DAY), 7) * 7 DAY)),
   site, origen, SUM(visitas), SUM(qty_users), SUM(qty_users_loggedin)
-FROM diario WHERE DATE_DIFF(ds, DATE '${D.W8}', DAY) BETWEEN 0 AND 83
+FROM diario WHERE DATE_DIFF(ds, DATE_SUB(CURRENT_DATE('America/Argentina/Buenos_Aires'), INTERVAL MOD(EXTRACT(DAYOFWEEK FROM CURRENT_DATE('America/Argentina/Buenos_Aires')) + 5, 7) + 84 DAY), DAY) BETWEEN 0 AND 83
 GROUP BY 1,2,3,4
 UNION ALL
-SELECT 'mtd_curr', FORMAT_DATE('%Y-%m-%d', DATE '${D.CUR}'), site, origen, SUM(visitas), SUM(qty_users), SUM(qty_users_loggedin)
-FROM diario WHERE ds BETWEEN '${D.CUR}' AND '${D.YEST}' GROUP BY 1,2,3,4
+SELECT 'mtd_curr', FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(CURRENT_DATE('America/Argentina/Buenos_Aires'), MONTH)), site, origen, SUM(visitas), SUM(qty_users), SUM(qty_users_loggedin)
+FROM diario WHERE ds BETWEEN DATE_TRUNC(CURRENT_DATE('America/Argentina/Buenos_Aires'), MONTH) AND DATE_SUB(CURRENT_DATE('America/Argentina/Buenos_Aires'), INTERVAL 1 DAY) GROUP BY 1,2,3,4
 UNION ALL
-SELECT 'mtd_prev', FORMAT_DATE('%Y-%m-%d', DATE '${D.PREV}'), site, origen, SUM(visitas), SUM(qty_users), SUM(qty_users_loggedin)
-FROM diario WHERE ds BETWEEN '${D.PREV}' AND '${D.PREV_DAY}' GROUP BY 1,2,3,4
+SELECT 'mtd_prev', FORMAT_DATE('%Y-%m-%d', DATE_SUB(DATE_TRUNC(CURRENT_DATE('America/Argentina/Buenos_Aires'), MONTH), INTERVAL 1 MONTH)), site, origen, SUM(visitas), SUM(qty_users), SUM(qty_users_loggedin)
+FROM diario WHERE ds BETWEEN DATE_SUB(DATE_TRUNC(CURRENT_DATE('America/Argentina/Buenos_Aires'), MONTH), INTERVAL 1 MONTH) AND DATE_ADD(DATE_SUB(DATE_TRUNC(CURRENT_DATE('America/Argentina/Buenos_Aires'), MONTH), INTERVAL 1 MONTH), INTERVAL GREATEST(1, LEAST(EXTRACT(DAY FROM CURRENT_DATE('America/Argentina/Buenos_Aires')) - 1, EXTRACT(DAY FROM LAST_DAY(DATE_SUB(DATE_TRUNC(CURRENT_DATE('America/Argentina/Buenos_Aires'), MONTH), INTERVAL 1 MONTH))))) - 1 DAY) GROUP BY 1,2,3,4
 ORDER BY 1,3,2,4
