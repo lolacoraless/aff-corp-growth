@@ -1475,8 +1475,26 @@ Write-Host "HTML updated ($([Math]::Round(($html.Length)/1024,0)) KB)."
 
 # ==== UPLOAD TO GRID (presigned 3-step flow para archivos grandes) ============
 Write-Host "Uploading to Grid..." -ForegroundColor Cyan
+# Grid acepta una VENTANA de versiones y la va corriendo (hoy: 3.6.9/10/11). Con el
+# numero hardcodeado, el dia que 3.6.10 salga de la ventana la subida empieza a fallar
+# con skill_version_outdated y el script sigue de largo: el snapshot queda solo local
+# y Grid se queda viejo sin que nadie se entere. Ya paso el 2026-09-09.
+$GRID_VER = "3.6.10"
+try {
+    $verResp = & "C:\Windows\System32\curl.exe" -s --max-time 20 "https://grid.melioffice.com/skill/version?current_version=$GRID_VER"
+    $verJson = $verResp | ConvertFrom-Json
+    if ($verJson.version) {
+        if ($verJson.version -ne $GRID_VER) {
+            Write-Host "  Grid pide skill_version $($verJson.version) (teniamos $GRID_VER)" -ForegroundColor Yellow
+        }
+        $GRID_VER = $verJson.version
+    }
+} catch {
+    Write-Host "  No se pudo consultar la version de Grid, se usa $GRID_VER" -ForegroundColor Yellow
+}
+
 # Multipart directo con timeout extendido (presigned proxy tenia bug en backend storage)
-$cfg = '{"skill_version":"3.6.10","doc_id":"01KRE46H4452DPPVSYM5BKXJ14"}'
+$cfg = '{"skill_version":"' + $GRID_VER + '","doc_id":"01KRE46H4452DPPVSYM5BKXJ14"}'
 $tmpCfg = [IO.Path]::GetTempFileName()
 [IO.File]::WriteAllText($tmpCfg, $cfg, [System.Text.Encoding]::ASCII)
 $gridResp = & "C:\Windows\System32\curl.exe" -s --max-time 300 -X POST "https://grid.melioffice.com/api/v1/engine/run" -F "config=<$tmpCfg" -F "file=@$htmlPath"
@@ -1485,8 +1503,9 @@ $parsed = $gridResp | ConvertFrom-Json
 if ($parsed.ok) {
     Write-Host "Grid upload OK: $($parsed.view_url)" -ForegroundColor Green
 } else {
-    Write-Host "Grid upload FAILED" -ForegroundColor Red
+    Write-Host "*** Grid upload FALLO — el dashboard en Grid quedo VIEJO ***" -ForegroundColor Red
     Write-Host $gridResp
+    $gridFallo = $true
 }
 
 # ==== PACING BACKTEST AUTO-UPDATE ============================================
@@ -1618,7 +1637,7 @@ ORDER BY SIT_SITE_ID, mes, dia
         Write-Host "  HTML actualizado."
 
         # Upload a Grid
-        $pacingCfg = "{`"skill_version`":`"3.6.10`",`"doc_id`":`"$pacingDocId`"}"
+        $pacingCfg = "{`"skill_version`":`"$GRID_VER`",`"doc_id`":`"$pacingDocId`"}"
         $tmpPacingCfg = [IO.Path]::GetTempFileName()
         [IO.File]::WriteAllText($tmpPacingCfg, $pacingCfg, [System.Text.Encoding]::ASCII)
         $pacingResp = & "C:\Windows\System32\curl.exe" -s --max-time 300 -X POST "https://grid.melioffice.com/api/v1/engine/run" -F "config=<$tmpPacingCfg" -F "file=@$pacingHtmlPath"
@@ -1642,4 +1661,9 @@ ORDER BY SIT_SITE_ID, mes, dia
 }
 
 Write-Host ""
+if ($gridFallo) {
+    Write-Host ""
+    Write-Host "ATENCION: la subida a Grid fallo. Los datos nuevos estan en el HTML local" -ForegroundColor Red
+    Write-Host "pero Grid sigue mostrando los anteriores. Revisar el error de arriba." -ForegroundColor Red
+}
 Write-Host "=== DONE in ${totalSec}s ===" -ForegroundColor Cyan
