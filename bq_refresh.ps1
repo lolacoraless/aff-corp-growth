@@ -1462,7 +1462,13 @@ $data.GetEnumerator() | ForEach-Object {
 # ==== INJECT INTO HTML =======================================================
 Write-Host ""
 Write-Host "Injecting into HTML..." -ForegroundColor Cyan
-$htmlPath = "C:\Users\lcorales\Downloads\Claude\affiliates-dashboard-grid.html"
+$htmlPath = Join-Path $PSScriptRoot "affiliates-dashboard-grid.html"
+if (-not (Test-Path $htmlPath)) {
+    Write-Host "No se encontro $htmlPath" -ForegroundColor Red
+    Write-Host "Corre el script desde la carpeta del repo clonado:" -ForegroundColor Yellow
+    Write-Host "  git clone https://github.com/lolacoraless/aff-corp-growth" -ForegroundColor Yellow
+    exit 1
+}
 $html = [IO.File]::ReadAllText($htmlPath, [Text.Encoding]::UTF8)
 $newTag = "<script>window.__PRELOADED__ = $snapshotJson;</script>"
 $html = [Text.RegularExpressions.Regex]::Replace(
@@ -1510,8 +1516,8 @@ if ($parsed.ok) {
 
 # ==== PACING BACKTEST AUTO-UPDATE ============================================
 # Trigger: primer corrida del mes con >= 2 dias habiles transcurridos
-$pacingStateFile = "C:\Users\lcorales\Downloads\Claude\aff-corp-growth-repo\pacing_last_month.txt"
-$pacingHtmlPath  = "C:\Users\lcorales\Downloads\Claude\pacing-analysis-mayo26.html"
+$pacingStateFile = Join-Path $PSScriptRoot "pacing_last_month.txt"
+$pacingHtmlPath  = Join-Path $PSScriptRoot "pacing-analysis-mayo26.html"
 $pacingDocId     = "01KSR5A3JWVWGGS9NPC5ZR9XA2"
 
 $lastPacingMonth = if (Test-Path $pacingStateFile) { (Get-Content $pacingStateFile -Raw).Trim() } else { "" }
