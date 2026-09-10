@@ -1528,7 +1528,7 @@
       "parameters": {
         "sendTo": "lola.corales@mercadolibre.com",
         "subject": "=Dashboard Afiliados v2 actualizado - {{ $now.format('dd/MM/yyyy HH:mm') }}",
-        "message": "=Filas escritas: {{ $('Juntar').first().json.data.length }}\n\nhttps://grid.adminml.com/d/01M238APRQRGDTJDY0JV1MAN03/view",
+        "message": "=Filas escritas: {{ $('Juntar').first().json.data.length }}\n\nhttps://grid.adminml.com/d/01KRE46H4452DPPVSYM5BKXJ14/view",
         "options": {}
       },
       "id": "n-mail",

@@ -409,9 +409,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
       Google Sheet
       <span>Los datos que alimentan este dashboard</span>
     </a>
-    <a class="info-link" href="https://grid.adminml.com/d/01KRE46H4452DPPVSYM5BKXJ14/view" target="_blank" rel="noopener">
+    <a class="info-link" href="https://grid.adminml.com/d/01M238APRQRGDTJDY0JV1MAN03/view" target="_blank" rel="noopener">
       Dashboard original
-      <span>Se refresca por PowerShell · queda como respaldo</span>
+      <span>Copia de respaldo · se refresca por PowerShell</span>
     </a>
 
     <h4>Si algo falla</h4>
@@ -6676,7 +6676,7 @@ async function loadSnapshot() {
 // melisystems, body JSON y aprobacion de los duenos de la API. Los nodos de
 // Google no tienen ninguna de esas restricciones.
 const V2_SHEET_ID = '14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc';
-const V2_DOC_ID   = '01M238APRQRGDTJDY0JV1MAN03';
+const V2_DOC_ID   = '01KRE46H4452DPPVSYM5BKXJ14';
 const V2_GRUPOS   = {"g_behaviour": ["behaviour", "beh_mtd", "beh_pacing", "qr_rolling"], "g_registros": ["registrations", "reg_mtd", "reg_pacing"], "g_landing": ["landing_traffic", "landing_pacing"], "g_nmv": ["nmv_monthly", "nmv_weekly", "nmv_mtd", "nmv_pacing", "nmv_lt_by_status"], "g_activacion": ["act1", "act2", "act_source", "act_new_days"], "g_churn": ["churn", "churn_comp", "churn_mtd", "earnings_buckets"], "g_retencion": ["retention_by_segment", "retention_cohort_curve"], "g_varios": ["spend_pom", "data_freshness", "mkt_context"], "g_linkgen": ["link_gen_monthly", "link_gen_daily", "link_gen_mtd_comp", "link_gen_by_segment", "link_gen_earnings_by_status"]};
 const V2_CLAVES   = ["behaviour", "beh_mtd", "beh_pacing", "qr_rolling", "registrations", "reg_mtd", "reg_pacing", "landing_traffic", "landing_pacing", "nmv_monthly", "nmv_weekly", "nmv_mtd", "nmv_pacing", "nmv_lt_by_status", "act1", "act2", "act_source", "act_new_days", "churn", "churn_comp", "churn_mtd", "earnings_buckets", "retention_by_segment", "retention_cohort_curve", "spend_pom", "data_freshness", "mkt_context", "link_gen_monthly", "link_gen_daily", "link_gen_mtd_comp", "link_gen_by_segment", "link_gen_earnings_by_status"];
 const V2_TAB_META = 'g_meta';
