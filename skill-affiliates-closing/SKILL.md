@@ -17,17 +17,31 @@ description: >
 
 ## Fuente de datos y configuración
 
-**Archivo HTML del dashboard:**
+**Fuente de datos:** la resuelve `scripts/data_source.py`, que importan los dos extractores.
+
+1. **Google Sheet** (fuente viva) — `14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc`.
+   Lo escribe Verdi Flows a las 10, 12 y 14 hs. Una tab por familia de queries,
+   con cada fila serializada por `TO_JSON_STRING`. Se lee por la API de Grid,
+   asi que **requiere VPN de MELI**.
+2. **HTML local** (respaldo) — `C:\Users\lcorales\Downloads\Claude\affiliates-dashboard-grid.html`.
+   Solo se actualiza cuando alguien corre `bq_refresh.ps1` a mano, asi que puede
+   estar dias atrasado.
+
+Los scripts intentan el Sheet primero y caen al HTML si no responde. **Siempre
+imprimen de donde salieron los datos y de cuando son**, en la primera linea:
+
 ```
-C:\Users\lcorales\Downloads\Claude\affiliates-dashboard-grid.html
+[fuente] Google Sheet (Verdi, se actualiza 10/12/14 hs) - snapshot 2026-09-11 15:24:37 UTC
 ```
-Contiene el snapshot `window.__PRELOADED__` con todos los datos del programa.
+
+Si dice `HTML local`, avisarlo en el reporte: los numeros pueden no ser de hoy.
 
 **Orden de sites (siempre este orden):** MLB → MLM → MLC → MLA
 
 **URL del dashboard:** `https://grid.adminml.com/d/01KRE46H4452DPPVSYM5BKXJ14/view`
 
 **Scripts de extracción** (en `scripts/` relativo a esta skill):
+- `data_source.py` — resuelve la fuente (Sheet → HTML). No se corre solo, lo importan los otros dos
 - `extract_monthly.py` — cierre mensual
 - `extract_mtd.py` — seguimiento MTD
 
@@ -173,6 +187,9 @@ Dashboard → https://grid.adminml.com/d/01KRE46H4452DPPVSYM5BKXJ14/view
 - **QR calendario vs QR rolling**: el script usa `quick_ratio` del behaviour MENSUAL (QR calendario = (new+recovered)/inactive del mes). El QR Rolling 30d es distinto y viene de `qr_rolling`. No confundirlos.
 - **NMV share**: campo `share_ts` en `nmv_monthly` / `nmv_mtd`, seg `'all'`. LT = `'lt'`, KA = `'nlt'`.
 - **Registrations**: tabla usa `site_id` (no `sit_site_id`) y campo `month` como entero (1-12).
+  Desde la v2 viene pre-agregada en BQ con una columna `grain` (`month` | `week`).
+  Al sumar por mes hay que filtrar `grain == 'month'`: las filas semanales traen
+  `year`/`month` en null, rompen el `int()` y desvirtuan el total.
 - **Churn %**: calcular como `churned / active_prev * 100` desde la tabla `churn`.
 - **Spend POM**: campo `cost_lc` en moneda local del site.
 - **Semáforos**: umbral ±3% sobre cambio relativo. Churn es reversed (baja = 🟢). QR es higher-is-better.
