@@ -312,6 +312,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .info-link span{display:block;color:var(--muted);font-weight:400;font-size:11px;margin-top:2px}
 .info-nota{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:8px;
   padding:10px 12px;margin-top:14px;font-size:11.5px}
+
+/* Boton de refresco: el dashboard lee el Sheet al abrirse, asi que esto sirve
+   sobre todo cuando alguien deja la pestana abierta y Verdi corre mientras tanto. */
+.btn-refresh{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);
+  border-radius:6px;padding:4px 10px;font-size:10.5px;font-weight:600;cursor:pointer;
+  font-family:var(--font);margin-left:10px}
+.btn-refresh:hover:not(:disabled){background:rgba(255,255,255,.22)}
+.btn-refresh:disabled{opacity:.5;cursor:default}
 </style>
 <script src="/d/_assets/grid-sdk.js"></script>
 </head>
@@ -322,6 +330,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
   <div class="hdr-right">
     <span class="mock-badge" id="data-badge">⚠ Datos ejemplo</span>
     <span id="last-refresh" style="font-size:10px;color:#6B7280;display:none"></span>
+    <button id="btn-refresh" class="btn-refresh" onclick="refrescarDesdeSheets()" title="Vuelve a leer el Google Sheet por si Verdi corrio recien">Actualizar</button>
   </div>
 </header>
 
@@ -6753,6 +6762,26 @@ async function cargarSnapshotDeSheets() {
     console.warn('[v2] no se pudo leer el snapshot de Sheets, se usa el embebido:', e.message);
     return false;
   }
+}
+
+// Relee el Sheet a pedido. Si hay un snapshot mas nuevo, recarga la pagina en vez
+// de reprocesar en caliente: al recargar vuelve a correr el INIT completo, que ya
+// sabe armar todo desde cero. Reprocesar a mano duplicaria esa logica y es donde
+// se cuelan los estados a medias.
+async function refrescarDesdeSheets() {
+  const b = document.getElementById('btn-refresh');
+  if (!b) return;
+  const texto = b.textContent;
+  b.disabled = true; b.textContent = 'Buscando...';
+  try {
+    const hayNuevo = await cargarSnapshotDeSheets();
+    if (hayNuevo) { b.textContent = 'Actualizando...'; location.reload(); return; }
+    b.textContent = 'Ya al dia';
+  } catch (e) {
+    console.warn('[v2] fallo el refresco manual:', e);
+    b.textContent = 'Error';
+  }
+  setTimeout(() => { b.textContent = texto; b.disabled = false; }, 2500);
 }
 
 // ═══════════════════════════════════════════════════════
