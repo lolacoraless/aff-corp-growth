@@ -2,28 +2,32 @@
 """
 Carga el snapshot del dashboard de Afiliados.
 
-Desde que el refresh lo hace Verdi Flows (10, 12 y 14 hs), la fuente viva es un
-Google Sheet: una tab por familia de queries, con cada fila serializada por
-TO_JSON_STRING. El HTML local queda de respaldo — lo escribe bq_refresh.ps1 a
-mano, asi que puede estar varios dias atrasado.
+Desde que el refresh lo hace Verdi Flows (10:17, 12:17 y 14:17), la fuente viva
+es un Google Sheet: la tab "snapshot" tiene todas las queries juntas, una fila
+por registro, con la fila serializada por TO_JSON_STRING. Verdi la reescribe
+entera de una vez y solo si llegaron todas las consultas, asi que nunca queda a
+medias. Los HTML locales quedan de respaldo y pueden estar atrasados.
 
-Se intenta el Sheet primero y se cae al HTML si no responde. Siempre se informa
-de donde salieron los datos y de cuando son, para que nadie lea numeros viejos
-creyendo que son de hoy.
+Orden: tab snapshot -> tabs g_* del flow anterior (solo si estan completas) ->
+el HTML local mas nuevo. Siempre se informa de donde salieron los datos y de
+cuando son, para que nadie lea numeros viejos creyendo que son de hoy.
 
 Requiere VPN de MELI: la lectura del Sheet va por la API de Grid, que resuelve
 la identidad en el edge.
 """
 import json
+import os
 import re
 import urllib.request
 
 SHEET_ID  = '14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc'
 DOC_ID    = '01KRE46H4452DPPVSYM5BKXJ14'
 GRID      = 'https://grid.melioffice.com'
-HTML_PATH = r'C:\Users\lcorales\Downloads\Claude\affiliates-dashboard-grid.html'
+TAB_SNAPSHOT = 'snapshot'
+HTMLS = [r'C:\Users\lcorales\Downloads\Claude\affiliates-dashboard-v2.html',
+         r'C:\Users\lcorales\Downloads\Claude\affiliates-dashboard-grid.html']
 
-# Cada tab agrupa varias queries; la columna _q dice a cual pertenece la fila.
+# Tabs del flow anterior, una por familia. Solo se leen si falta la tab snapshot.
 GRUPOS = {
     'g_behaviour':  ['behaviour', 'beh_mtd', 'beh_pacing', 'qr_rolling'],
     'g_registros':  ['registrations', 'reg_mtd', 'reg_pacing'],
@@ -38,13 +42,17 @@ GRUPOS = {
 }
 TAB_META = 'g_meta'
 CLAVES = [k for ks in GRUPOS.values() for k in ks]
+# Series que nunca vienen vacias: si falta alguna, el snapshot esta roto.
+NUCLEO = ['behaviour', 'registrations', 'nmv_monthly']
 
 
 def _leer_tab(tab, timeout=60):
     url = f'{GRID}/api/v1/sheets/{SHEET_ID}?doc_id={DOC_ID}&range={tab}!A:B'
     req = urllib.request.Request(url, headers={'x-api-source': 'office'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode('utf-8')).get('values', [])
+        filas = json.loads(r.read().decode('utf-8')).get('values', [])
+    # la primera fila es el header que escribe el nodo de Sheets
+    return [f for f in filas[1:] if len(f) > 1 and f[1]]
 
 
 def _normalizar(v):
@@ -67,51 +75,88 @@ def _normalizar(v):
     return v
 
 
-def _desde_sheet():
-    meta = _leer_tab(TAB_META)
-    filas_meta = [f for f in meta[1:] if len(f) > 1 and f[1]]
-    if not filas_meta:
-        raise RuntimeError('la tab g_meta esta vacia: la corrida de Verdi quedo incompleta')
-    info = json.loads(filas_meta[0][1])
-
+def _armar(filas):
+    """Filas [_q, r] -> (data, info). Exige exactamente una fila __meta__."""
+    metas = [f for f in filas if f[0] == '__meta__']
+    if len(metas) != 1:
+        raise RuntimeError(f'{len(metas)} filas __meta__ en el Sheet (tiene que haber 1)')
     data = {k: [] for k in CLAVES}
-    for tab in GRUPOS:
-        for fila in _leer_tab(tab)[1:]:
-            if len(fila) < 2 or not fila[1]:
-                continue
-            q = fila[0]
-            if q in data:
-                data[q].append(_normalizar(json.loads(fila[1])))
+    for q, r in (f[:2] for f in filas):
+        if q in data:
+            data[q].append(_normalizar(json.loads(r)))
+    return data, json.loads(metas[0][1])
 
+
+def _desde_snapshot():
+    data, info = _armar(_leer_tab(TAB_SNAPSHOT))
+    # Verdi escribe todo junto o nada, asi que una query vacia puede ser
+    # legitima (un MTD el dia 1 del mes). Solo el nucleo tiene que estar.
+    rotas = [k for k in NUCLEO if not data[k]]
+    if rotas:
+        raise RuntimeError('la tab snapshot no trae ' + ', '.join(rotas))
+    return data, info.get('savedAt', '')
+
+
+def _desde_tabs_viejas():
+    filas = []
+    for tab in list(GRUPOS) + [TAB_META]:
+        filas += _leer_tab(tab)
+    data, info = _armar(filas)
+    # Estas tabs se escribian de a una: una vacia es una corrida que se corto.
     vacias = [k for k in CLAVES if not data[k]]
     if vacias:
-        raise RuntimeError('queries sin filas en el Sheet: ' + ', '.join(vacias))
+        raise RuntimeError('tabs g_* incompletas: ' + ', '.join(vacias))
     return data, info.get('savedAt', '')
 
 
 def _desde_html():
-    with open(HTML_PATH, encoding='utf-8') as f:
-        html = f.read()
-    m = re.search(r'window\.__PRELOADED__\s*=\s*(\{.*?\});</script>', html, re.DOTALL)
-    snap = json.loads(m.group(1))
-    return snap['data'], snap.get('savedAt', '')
+    mejor = None
+    for ruta in HTMLS:
+        if not os.path.exists(ruta):
+            continue
+        with open(ruta, encoding='utf-8-sig') as f:
+            m = re.search(r'window\.__PRELOADED__\s*=\s*(\{.*?\});</script>', f.read(), re.DOTALL)
+        if not m:
+            continue
+        snap = json.loads(m.group(1))
+        if mejor is None or snap.get('savedAt', '') > mejor[1]:
+            mejor = (snap['data'], snap.get('savedAt', ''), os.path.basename(ruta))
+    if mejor is None:
+        raise RuntimeError('no hay ningun HTML local con snapshot')
+    return mejor
 
 
 def cargar(verbose=True):
-    """Devuelve (data, savedAt, fuente). fuente es 'sheet' o 'html'."""
+    """
+    Devuelve (data, savedAt, fuente). fuente es 'sheet', 'sheet-tabs-viejas' o 'html'.
+    Entre el Sheet y el HTML local gana el mas nuevo: el HTML puede estar mas al dia
+    si alguien corrio bq_refresh.ps1 a mano mientras Verdi fallaba.
+    """
+    motivos, candidatos = [], []
+    for fuente, leer in (('sheet', _desde_snapshot), ('sheet-tabs-viejas', _desde_tabs_viejas)):
+        try:
+            data, saved = leer()
+            candidatos.append((saved, fuente, data, 'Google Sheet'))
+            break
+        except Exception as e:
+            motivos.append(f'{fuente}: {e}')
     try:
-        data, saved = _desde_sheet()
-        fuente = 'sheet'
+        data, saved, archivo = _desde_html()
+        candidatos.append((saved, 'html', data, archivo))
     except Exception as e:
-        if verbose:
-            print(f'[fuente] No se pudo leer el Sheet ({e}).')
-            print('[fuente] Se usa el HTML local, que puede estar atrasado.')
-        data, saved = _desde_html()
-        fuente = 'html'
+        motivos.append(f'html: {e}')
+    if not candidatos:
+        raise RuntimeError('no hay ninguna fuente disponible: ' + ' | '.join(motivos))
+    saved, fuente, data, origen = max(candidatos, key=lambda c: c[0][:19])
 
     if verbose:
-        etiqueta = ('Google Sheet (Verdi, se actualiza 10/12/14 hs)' if fuente == 'sheet'
-                    else 'HTML local (bq_refresh.ps1, manual)')
+        for m in motivos:
+            print(f'[fuente] No se pudo usar {m}')
+        if fuente == 'html':
+            print(f'[fuente] Se usa el HTML local {origen}: es lo mas nuevo que hay, pero puede estar atrasado.')
+        etiqueta = {'sheet': 'Google Sheet, tab snapshot (Verdi, 10:17/12:17/14:17)',
+                    'sheet-tabs-viejas': 'Google Sheet, tabs g_* del flow anterior (pueden estar viejas)',
+                    'html': 'HTML local (respaldo)'}[fuente]
         print(f'[fuente] {etiqueta} · snapshot {saved[:19].replace("T", " ")} UTC')
     return data, saved, fuente
 

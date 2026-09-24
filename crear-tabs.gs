@@ -1,5 +1,8 @@
+// Crea la tab que escribe el refresh de Verdi (v4). Las tabs g_* son del flow
+// anterior: el dashboard solo las lee si falta "snapshot", y se pueden borrar
+// una vez que la v4 haya corrido bien.
 function crearTabs() {
-  var TABS = ["g_behaviour", "g_registros", "g_landing", "g_nmv", "g_activacion", "g_churn", "g_retencion", "g_varios", "g_linkgen", "g_meta"];
+  var TABS = ["snapshot"];
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var n = 0;
   TABS.forEach(function (t) {

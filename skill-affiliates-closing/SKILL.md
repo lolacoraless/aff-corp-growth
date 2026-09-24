@@ -19,29 +19,31 @@ description: >
 
 **Fuente de datos:** la resuelve `scripts/data_source.py`, que importan los dos extractores.
 
-1. **Google Sheet** (fuente viva) — `14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc`.
-   Lo escribe Verdi Flows a las 10, 12 y 14 hs. Una tab por familia de queries,
-   con cada fila serializada por `TO_JSON_STRING`. Se lee por la API de Grid,
-   asi que **requiere VPN de MELI**.
-2. **HTML local** (respaldo) — `C:\Users\lcorales\Downloads\Claude\affiliates-dashboard-grid.html`.
-   Solo se actualiza cuando alguien corre `bq_refresh.ps1` a mano, asi que puede
-   estar dias atrasado.
+1. **Google Sheet, tab `snapshot`** (fuente viva) — `14GoBnB6GgnUYsCBY_nx82DUL2hZEmFXbDR4dByketqc`.
+   Lo escribe Verdi Flows a las 10:17, 12:17 y 14:17, entero y de una vez: todas
+   las queries en la misma tab, cada fila serializada por `TO_JSON_STRING`. Se lee
+   por la API de Grid, asi que **requiere VPN de MELI**.
+2. **Tabs `g_*` del Sheet** — las escribia el flow anterior. Solo se usan si falta
+   la tab `snapshot`, y solo si estan completas.
+3. **HTML local** (respaldo) — el mas nuevo entre `affiliates-dashboard-v2.html` y
+   `affiliates-dashboard-grid.html` en `C:\Users\lcorales\Downloads\Claude\`.
+   Pueden estar dias atrasados.
 
-Los scripts intentan el Sheet primero y caen al HTML si no responde. **Siempre
+Los scripts prueban en ese orden. **Siempre
 imprimen de donde salieron los datos y de cuando son**, en la primera linea:
 
 ```
-[fuente] Google Sheet (Verdi, se actualiza 10/12/14 hs) - snapshot 2026-09-11 15:24:37 UTC
+[fuente] Google Sheet, tab snapshot (Verdi, 10:17/12:17/14:17) · snapshot 2026-09-24 16:06:32 UTC
 ```
 
-Si dice `HTML local`, avisarlo en el reporte: los numeros pueden no ser de hoy.
+Si dice `tabs g_*` o `HTML local`, avisarlo en el reporte: los numeros pueden no ser de hoy.
 
 **Orden de sites (siempre este orden):** MLB → MLM → MLC → MLA
 
 **URL del dashboard:** `https://grid.adminml.com/d/01KRE46H4452DPPVSYM5BKXJ14/view`
 
 **Scripts de extracción** (en `scripts/` relativo a esta skill):
-- `data_source.py` — resuelve la fuente (Sheet → HTML). No se corre solo, lo importan los otros dos
+- `data_source.py` — resuelve la fuente (tab snapshot → tabs g_* → HTML). No se corre solo, lo importan los otros dos
 - `extract_monthly.py` — cierre mensual
 - `extract_mtd.py` — seguimiento MTD
 
